@@ -13,17 +13,18 @@ builtins.time = time
 #Import pydantic
 from pydantic import ValidationError
 load_dotenv()
-from agents import (
+from agents.base_agent import (
     ProjectAnalyzer, Planner, Architect, APIDesigner,
     CodeWriter, FrontendBuilder, MobileDeveloper,
     Tester, Debugger)
-from utils import Logger, LocalLLMClient, DEEPSEEK_TIMEOUT, Database
-from prompts import get_agent_prompt
-from tools import ToolKit, TOOL_DESCRIPTIONS
-# from models import AgentOutput, ProjectAnalysis # AgentOutput for validation, ProjectAnalysis not needed
-from models import AgentOutput, ApprovedTechStack, TechProposal # Added ApprovedTechStack, TechProposal
-from config import GeminiConfig, ModelConfig, AGENT_SPECIALIZATIONS # Added AGENT_SPECIALIZATIONS
-from context_handler import ProjectContext, TechStack, load_context, save_context, AnalysisOutput, PlatformRequirements # Added TechStack, AnalysisOutput, PlatformRequirements
+from utils.general_utils import Logger, DEEPSEEK_TIMEOUT
+from utils.crew_llm_service import LocalLLMClient
+from utils.database import Database
+from prompts.general_prompts import get_agent_prompt
+from utils.tools import ToolKit, TOOL_DESCRIPTIONS
+from utils.models import AgentOutput, ApprovedTechStack, TechProposal # Added ApprovedTechStack, TechProposal
+from configs.global_config import GeminiConfig, ModelConfig, AGENT_SPECIALIZATIONS # Added AGENT_SPECIALIZATIONS
+from utils.context_handler import ProjectContext, TechStack, load_context, save_context, AnalysisOutput, PlatformRequirements # Added TechStack, AnalysisOutput, PlatformRequirements
 from typing import List, Dict, Any # For type hinting
 
 # Define Context File Path
@@ -339,37 +340,26 @@ class TaskMaster:
 
 
     def start_workflow(self, user_input):
-        self.logger.log(f"Initializing new project for objective: {user_input}", "TaskMaster")
+        project_context = load_context(CONTEXT_JSON_FILE)
+        if not project_context.objective and user_input:
+            project_context.objective = user_input
+            self.logger.log(f"Objective set from user input: {user_input}", "TaskMaster")
+
         if not project_context.platform_requirements:
             self.logger.log("Platform requirements not found, attempting to run ProjectAnalyzer for detection.", "TaskMaster", level="WARNING")
-            # This assumes ProjectAnalyzer is always the first to run or can be called idempotently.
-            # For this integration, we'll rely on ProjectAnalyzer having run as part of the main sequence.
-            # If it still missing, it's a critical issue for negotiation.
             if "project_analyzer" in self.agents:
-                # To ensure it runs and populates platform_requirements, we might need a specific call
-                # or ensure its standard output parsing populates it.
-                # For now, we proceed, assuming prior execution.
-                pass # Platform detection is done in ProjectAnalyzer._parse_response
-            if not project_context.platform_requirements: # Check again
+                pass
+            if not project_context.platform_requirements:
                  self.logger.log("CRITICAL: Platform requirements are still missing after attempting to ensure ProjectAnalyzer ran. Negotiation cannot proceed accurately.", "TaskMaster", level="ERROR")
+                 if project_context.decision_rationale is None: project_context.decision_rationale = {}
                  project_context.decision_rationale["tech_council_negotiation_error"] = "Platform requirements missing."
-                 return project_context # Early exit if platform requirements are crucial and missing
 
-
-        # Initialize ApprovedTechStack and decision_rationale if not already present (e.g. first run)
-        if project_context.approved_tech_stack is None: # Check if it's None
+        if project_context.approved_tech_stack is None:
             project_context.approved_tech_stack = ApprovedTechStack()
-        if project_context.decision_rationale is None: # Check if it's None
+        if project_context.decision_rationale is None:
             project_context.decision_rationale = {}
 
         self.logger.log(f"Initial tech proposals: {project_context.tech_proposals}", "TaskMaster")
-
-        # --- b. Tech Proposal Phase (Simplified) ---
-        # As per subtask notes, we assume tech_proposals are populated by agents (Architect, MobileDeveloper)
-        # during their standard execution sequence *before* this negotiation method is called.
-        # No explicit agent calls here to generate proposals.
-
-        # --- c. Conflict Resolution Phase ---
         self.logger.log("Starting Conflict Resolution sub-phase...", "TaskMaster")
         if not project_context.tech_proposals:
             self.logger.log("No tech proposals found in project_context. Skipping conflict resolution.", "TaskMaster", level="WARNING")
@@ -380,14 +370,10 @@ class TaskMaster:
                     self.logger.log(f"No proposals for category {category}. Skipping.", "TaskMaster", level="WARNING")
                     project_context.decision_rationale[category] = "No proposals received for this category."
                     continue
-
-                # Convert Pydantic models to dicts for tool input
                 proposals_list_dicts = [p.model_dump() for p in proposals_list_models]
-
                 chosen_technology_name: Optional[str] = None
                 decision_reason: str = ""
                 confidence_notes_for_category = []
-
                 if len(proposals_list_dicts) == 1:
                     chosen_proposal_dict = proposals_list_dicts[0]
                     chosen_technology_name = chosen_proposal_dict.get("technology")
@@ -399,7 +385,6 @@ class TaskMaster:
                     try:
                         resolution = self.tool_kit.resolve_tech_conflict(proposals=proposals_list_dicts)
                         self.logger.log(f"Category '{category}': Conflict resolution result: {resolution}", "TaskMaster")
-
                         if resolution["decision"] == "use_proposal":
                             chosen_proposal_dict = resolution.get("proposal", {})
                             chosen_technology_name = chosen_proposal_dict.get("technology")
@@ -407,20 +392,22 @@ class TaskMaster:
                             if chosen_proposal_dict.get('confidence', 1.0) < 0.8:
                                 confidence_notes_for_category.append(f"Low confidence proposal ({chosen_proposal_dict.get('technology')}, {chosen_proposal_dict.get('confidence')}) included.")
                         elif resolution["decision"] == "needs_hybrid":
-                            hybrid_proposals_dicts = [p.model_dump() for p in resolution.get("proposals", [])] # Ensure dicts for tool
+                            hybrid_proposals_input = resolution.get("proposals", [])
+                            if hybrid_proposals_input and not isinstance(hybrid_proposals_input[0], dict):
+                                hybrid_proposals_dicts = [p.model_dump() for p in hybrid_proposals_input]
+                            else:
+                                hybrid_proposals_dicts = hybrid_proposals_input
                             hybrid_result = self.tool_kit.create_hybrid_solution(proposals=hybrid_proposals_dicts, category=category)
                             self.logger.log(f"Category '{category}': Hybrid solution result: {hybrid_result}", "TaskMaster")
                             if hybrid_result.get("solution_type") not in ["error", None]:
-                                chosen_technology_name = hybrid_result.get("description") # Store descriptive string
+                                chosen_technology_name = hybrid_result.get("description")
                                 decision_reason = hybrid_result.get("reason", "Hybrid solution created.")
-                                # Check confidence of components in hybrid
-                                for p_dict in hybrid_proposals_dicts: # Check original proposals that formed hybrid
+                                for p_dict in hybrid_proposals_dicts:
                                     if p_dict.get('confidence', 1.0) < 0.8:
                                          confidence_notes_for_category.append(f"Low confidence proposal ({p_dict.get('technology')}, {p_dict.get('confidence')}) contributed to hybrid.")
                             else:
                                 decision_reason = f"Hybrid creation failed or not applicable: {hybrid_result.get('description', 'Unknown error')}. Defaulting to highest confidence."
                                 self.logger.log(decision_reason, "TaskMaster", level="WARNING")
-                                # Fallback: pick highest confidence from original list if hybrid fails
                                 sorted_proposals = sorted(proposals_list_dicts, key=lambda p: p.get('confidence', 0.0), reverse=True)
                                 if sorted_proposals:
                                     chosen_proposal_dict = sorted_proposals[0]
@@ -445,11 +432,8 @@ class TaskMaster:
                             chosen_technology_name = chosen_proposal_dict.get("technology")
                             if chosen_proposal_dict.get('confidence', 1.0) < 0.8:
                                 confidence_notes_for_category.append(f"Low confidence proposal ({chosen_proposal_dict.get('technology')}, {chosen_proposal_dict.get('confidence')}) chosen as fallback after exception.")
-
                 if chosen_technology_name:
-                    # Map category to ApprovedTechStack field names
-                    # This mapping needs to be robust.
-                    field_name = category # Assuming category names match ApprovedTechStack field names for now
+                    field_name = category
                     if hasattr(project_context.approved_tech_stack, field_name):
                         setattr(project_context.approved_tech_stack, field_name, chosen_technology_name)
                         self.logger.log(f"Approved '{chosen_technology_name}' for category '{category}'. Reason: {decision_reason}", "TaskMaster")
@@ -461,8 +445,6 @@ class TaskMaster:
                         project_context.decision_rationale[category] = f"Chosen: {chosen_technology_name}. Reason: {decision_reason}."
                         if confidence_notes_for_category:
                              project_context.decision_rationale[category] += " MANDATORY REVIEW NOTES: " + " | ".join(confidence_notes_for_category)
-
-        # --- d. Dependency Check Phase ---
         self.logger.log("Starting Dependency Check sub-phase...", "TaskMaster")
         if project_context.approved_tech_stack:
             try:
@@ -476,34 +458,25 @@ class TaskMaster:
                 }
                 if dep_check_result.get("conflicts"):
                     self.logger.log(f"CRITICAL DEPENDENCY CONFLICTS FOUND: {dep_check_result.get('conflicts')}", "TaskMaster", level="ERROR")
-                    # Potentially halt or require intervention here in a more advanced workflow
             except Exception as e:
                 self.logger.log(f"Error during dependency check: {e}", "TaskMaster", level="ERROR")
                 project_context.decision_rationale["dependency_checks_error"] = str(e)
         else:
             self.logger.log("Approved tech stack not available for dependency check.", "TaskMaster", level="WARNING")
-
-
-        # --- e. Consensus Locking Phase ---
         self.logger.log("Starting Consensus Locking sub-phase...", "TaskMaster")
         if not project_context.approved_tech_stack or not project_context.platform_requirements:
             self.logger.log("Cannot perform consensus locking: approved_tech_stack or platform_requirements missing.", "TaskMaster", level="ERROR")
             project_context.decision_rationale["consensus"] = "Skipped due to missing data."
         else:
-            # Identify key validating agents. Using a predefined list of roles for now.
-            # Example: Architect and relevant specialists (e.g., MobileDeveloper if mobile is a platform)
-            key_agent_roles_to_consult = ["architect"] # Always consult architect
+            key_agent_roles_to_consult = ["architect"]
             if project_context.platform_requirements.ios or project_context.platform_requirements.android:
                 key_agent_roles_to_consult.append("mobile developer")
-            # Add other roles like "Security Analyst" if such agents exist and are relevant.
-
             agents_to_consult_instances = []
             for role_keyword in key_agent_roles_to_consult:
                 for agent_instance in self.agents.values():
                     if role_keyword in agent_instance.role.lower():
                         if agent_instance not in agents_to_consult_instances:
                              agents_to_consult_instances.append(agent_instance)
-
             if not agents_to_consult_instances:
                  self.logger.log("No specific validating agents found for consensus. Defaulting to approval.", "TaskMaster", level="WARNING")
                  project_context.decision_rationale["consensus"] = "Achieved (no specific validators configured for this setup)."
@@ -525,7 +498,6 @@ class TaskMaster:
                         self.logger.log(f"Error during validation by agent {agent.name}: {e}", "TaskMaster", level="ERROR")
                         all_agents_approve = False
                         all_concerns.append(f"{agent.name}: Validation process failed with exception - {e}")
-
                 if all_agents_approve:
                     self.logger.log("Consensus achieved. Tech stack locked.", "TaskMaster")
                     project_context.decision_rationale["consensus"] = "Achieved"
@@ -533,185 +505,122 @@ class TaskMaster:
                     self.logger.log(f"Consensus failed. Concerns: {all_concerns}", "TaskMaster", level="ERROR")
                     project_context.decision_rationale["consensus"] = "Failed"
                     project_context.decision_rationale["consensus_concerns"] = all_concerns
-                    # Future: Trigger re-negotiation or alert user.
-
-        # --- f. Context Finalization ---
         self.logger.log("Tech Council Negotiation phase finished.", "TaskMaster")
-        # Context is saved by the main loop after this method returns and after each agent.
-        return project_context
-
-
-    def start_workflow(self, user_input):
-        workflow: Optional[List[str]] = None # Initialize workflow
-        self.logger.log(f"Initializing new project for objective: {user_input}", "TaskMaster")
-
-        # Sanitize user_input to create a directory-friendly project name
-        # Keep it relatively short and simple for folder names.
+        workflow: Optional[List[str]] = None
         sanitized_objective_for_name = re.sub(r'[^\w\s-]', '', user_input[:30]).strip()
         project_name = re.sub(r'[-\s]+', '_', sanitized_objective_for_name).lower()
-        if not project_name: # Handle empty string after sanitization
+        if not project_name:
             project_name = "unnamed_ai_project"
-
-        # Create project-specific directory
-        # Using Path("projects") ensures it's relative to where main.py is run.
-        # All project outputs will go into a subfolder within "projects".
         project_output_base_dir = Path("projects")
         project_specific_dir = project_output_base_dir / project_name
         project_specific_dir.mkdir(parents=True, exist_ok=True)
-
         self.logger.log(f"Project name: '{project_name}', Output directory: '{project_specific_dir}'", "TaskMaster")
-
-        # Keyword analysis for intelligent pre-filling
         user_input_lower = user_input.lower()
-        
         tentative_db_choice = "TBD"
         tentative_project_type = "unknown"
         initial_frontend = None
         initial_backend = None
         initial_database = None
-
-        # Database Check
         if "database" in user_input_lower or "db" in user_input_lower:
-            tentative_db_choice = "SQLite" # Default, can be refined by ProjectAnalyzer
+            tentative_db_choice = "SQLite"
             initial_database = "SQLite"
             if tentative_project_type == "unknown":
                 tentative_project_type = "backend"
-
-        # API Check
         if "api" in user_input_lower:
             tentative_project_type = "backend"
             if initial_backend is None:
-                initial_backend = "Python/FastAPI" # Sensible default
-
-        # Frontend/UI Check
+                initial_backend = "Python/FastAPI"
         if any(keyword in user_input_lower for keyword in ["website", "frontend", "ui", "user interface"]):
-            if initial_frontend is None: # Avoid overwriting mobile-specific choice if already made
+            if initial_frontend is None:
                 initial_frontend = "React"
-            
             if tentative_project_type == "unknown":
                 tentative_project_type = "frontend"
-            elif tentative_project_type == "backend": # If backend was detected (e.g. by "api" or "db")
+            elif tentative_project_type == "backend":
                 tentative_project_type = "fullstack"
-        
-        # Mobile App Check (comes after frontend to allow override if "mobile app" is specific)
         if any(keyword in user_input_lower for keyword in ["mobile app", "ios", "android"]):
-            initial_frontend = "React Native" # Mobile often implies a specific frontend stack
-            # tentative_project_type logic for mobile:
-            if "api" in user_input_lower or initial_backend is not None: # If backend is also implied
-                 tentative_project_type = "fullstack" # Mobile app with a backend
+            initial_frontend = "React Native"
+            if "api" in user_input_lower or initial_backend is not None:
+                 tentative_project_type = "fullstack"
             else:
-                 tentative_project_type = "mobile" # Standalone mobile app or mobile frontend focus
-
-        # Create a fresh TechStack with potentially pre-filled values
+                 tentative_project_type = "mobile"
         initial_tech_stack = TechStack(
             frontend=initial_frontend,
             backend=initial_backend,
             database=initial_database
         )
-
-        # Create a fresh ProjectContext instance
         project_context = ProjectContext(
             project_name=project_name,
             objective=user_input,
-            project_type=tentative_project_type, # Use derived project type
+            project_type=tentative_project_type,
             tech_stack=initial_tech_stack,
-            db_choice=tentative_db_choice, # Use derived DB choice
-            deployment_target="TBD", # To be determined
-            security_level="standard", # Default, can be changed by analysis/user
-            current_dir=str(project_specific_dir.resolve()), # Project-specific directory
-            analysis=None, # Clear previous analysis
-            plan=None, # Clear previous plan
-            architecture=None, # Clear previous architecture
-            api_specs=None, # Clear previous API specs
-            project_summary="", # Clear previous summary
-            current_code_snippet="", # Clear previous code snippet
-            error_report="" # Clear previous error report
+            db_choice=tentative_db_choice,
+            deployment_target="TBD",
+            security_level="standard",
+            current_dir=str(project_specific_dir.resolve()),
+            analysis=None,
+            plan=None,
+            architecture=None,
+            api_specs=None,
+            project_summary="",
+            current_code_snippet="",
+            error_report="",
+            tech_proposals={},
+            approved_tech_stack=ApprovedTechStack(),
+            decision_rationale={},
+            platform_requirements=PlatformRequirements()
         )
         self.logger.log(f"Initial project context: {project_context.model_dump_json(indent=2)}", "TaskMaster")
-
-        # Save this fresh context. CONTEXT_JSON_FILE will now reflect this new project.
         save_context(project_context, CONTEXT_JSON_FILE)
         self.logger.log(f"Fresh project context initialized and saved for '{project_name}'.", "TaskMaster")
-
-        # Ephemeral workflow data
         current_workflow_data = {
-            "user_input": user_input, # Keep user_input for logging or specific agent needs not in ProjectContext
+            "user_input": user_input,
             "start_time": time.time()
-            # Other ephemeral data can be added here
         }
-
-        # No agent.load_context() loop needed anymore
-
-        # Project Analyzer
         current_workflow_data, project_context = self.delegate("project_analyzer", current_workflow_data, project_context)
-        save_context(project_context, CONTEXT_JSON_FILE) # Save after each delegation
-
+        save_context(project_context, CONTEXT_JSON_FILE)
         if current_workflow_data.get("error"):
              self.logger.log(f"Workflow halted after ProjectAnalyzer due to error: {current_workflow_data.get('error')}", "TaskMaster", level="ERROR")
-             # No further processing if ProjectAnalyzer fails critically
         elif not project_context.analysis or not project_context.platform_requirements:
             self.logger.log("ProjectAnalyzer did not populate analysis or platform_requirements. Tech Council negotiation cannot proceed effectively.", "TaskMaster", level="ERROR")
-            # Optionally, add an error to current_workflow_data or project_context.decision_rationale
             current_workflow_data["error"] = "ProjectAnalyzer output missing for Tech Council."
         else:
-            # --- Run Core Proposing Agents before Tech Council ---
             self.logger.log("Running core proposing agents before Tech Council negotiation...", "TaskMaster")
-            agents_to_run_before_council = ["architect"] # Architect always runs
-
+            agents_to_run_before_council = ["architect"]
             for agent_name_pre_council in agents_to_run_before_council:
-                if current_workflow_data.get("error"): # Stop if ProjectAnalyzer already errored
+                if current_workflow_data.get("error"):
                     break
                 if agent_name_pre_council in self.agents:
-                    # Log before running Architect
                     proposals_before_arch = {c: [p.model_dump() for p in pl] for c, pl in project_context.tech_proposals.items()} if project_context.tech_proposals else {}
                     self.logger.log(f"Before Architect (pre-council) run. Tech proposals so far: {json.dumps(proposals_before_arch, indent=2)}", "TaskMaster")
-
                     self.logger.log(f"Delegating to pre-council agent: {agent_name_pre_council}", "TaskMaster")
                     current_workflow_data, project_context = self.delegate(agent_name_pre_council, current_workflow_data, project_context)
                     save_context(project_context, CONTEXT_JSON_FILE)
-
-                    # Log after running Architect
                     proposals_after_arch = {c: [p.model_dump() for p in pl] for c, pl in project_context.tech_proposals.items()} if project_context.tech_proposals else {}
                     self.logger.log(f"After Architect (pre-council) run. Tech proposals now: {json.dumps(proposals_after_arch, indent=2)}", "TaskMaster")
-
                     if current_workflow_data.get("error"):
                         self.logger.log(f"Error after pre-council agent {agent_name_pre_council}: {current_workflow_data.get('error')}", "TaskMaster", level="ERROR")
                 else:
                     self.logger.log(f"Agent {agent_name_pre_council} not found in self.agents. Skipping.", "TaskMaster", level="WARNING")
-
-            # Conditionally run MobileDeveloper if mobile platform is required and no critical error so far
             if not current_workflow_data.get("error") and project_context.platform_requirements and \
                (project_context.platform_requirements.ios or project_context.platform_requirements.android):
                 if "mobile_developer" in self.agents:
-                    # Log before running MobileDeveloper
                     proposals_before_mob = {c: [p.model_dump() for p in pl] for c, pl in project_context.tech_proposals.items()} if project_context.tech_proposals else {}
                     self.logger.log(f"Before MobileDeveloper (pre-council) run. Tech proposals so far: {json.dumps(proposals_before_mob, indent=2)}", "TaskMaster")
-
                     self.logger.log("Mobile platform detected, delegating to MobileDeveloper pre-council.", "TaskMaster")
                     current_workflow_data, project_context = self.delegate("mobile_developer", current_workflow_data, project_context)
                     save_context(project_context, CONTEXT_JSON_FILE)
-
-                    # Log after running MobileDeveloper
                     proposals_after_mob = {c: [p.model_dump() for p in pl] for c, pl in project_context.tech_proposals.items()} if project_context.tech_proposals else {}
                     self.logger.log(f"After MobileDeveloper (pre-council) run. Tech proposals now: {json.dumps(proposals_after_mob, indent=2)}", "TaskMaster")
-
                     if current_workflow_data.get("error"):
                          self.logger.log(f"Error after mobile_developer (pre-council): {current_workflow_data.get('error')}", "TaskMaster", level="ERROR")
                 else:
                     self.logger.log("MobileDeveloper agent not found, though mobile platform is indicated.", "TaskMaster", level="WARNING")
-
-            # --- Tech Council Negotiation Step ---
-            # Proceed only if no critical errors occurred during pre-council agent runs
             if not current_workflow_data.get("error"):
-                # Log before entering Tech Council Negotiation
                 final_proposals_for_council = {c: [p.model_dump() for p in pl] for c, pl in project_context.tech_proposals.items()} if project_context.tech_proposals else {}
                 self.logger.log(f"Entering Tech Council Negotiation. Final tech proposals collected: {json.dumps(final_proposals_for_council, indent=2)}", "TaskMaster")
-
                 project_context = self.run_tech_council_negotiation(project_context)
                 save_context(project_context, CONTEXT_JSON_FILE)
                 self.logger.log("Tech Council negotiation complete. Updated context saved.", "TaskMaster")
-
-                # Check if Tech Council negotiation resulted in unresolved critical issues
                 if project_context.decision_rationale.get("consensus") == "Failed" or \
                    project_context.decision_rationale.get("dependency_checks", {}).get("conflicts"):
                     error_message = "Tech Council negotiation resulted in unresolved issues. Halting workflow."
@@ -719,28 +628,20 @@ class TaskMaster:
                         error_message += f" Concerns: {project_context.decision_rationale['consensus_concerns']}"
                     if project_context.decision_rationale.get("dependency_checks", {}).get("conflicts"):
                         error_message += f" Conflicts: {project_context.decision_rationale['dependency_checks']['conflicts']}"
-
                     self.logger.log(error_message, "TaskMaster", level="ERROR")
                     current_workflow_data["error"] = error_message
-                    # Workflow halts here due to Tech Council issues
                 else:
                     self.logger.log("Tech Council decisions accepted. Proceeding with main agent workflow.", "TaskMaster")
                     project_type = project_context.analysis.project_type_confirmed if project_context.analysis and project_context.analysis.project_type_confirmed else project_context.project_type
-
                     base_workflow_steps = self.WORKFLOW_TEMPLATES.get(project_type, self.WORKFLOW_TEMPLATES["fullstack"])
-
                     agents_already_run = ["project_analyzer", "architect"]
                     if project_context.platform_requirements and (project_context.platform_requirements.ios or project_context.platform_requirements.android):
                         agents_already_run.append("mobile_developer")
-
                     remaining_workflow_steps = [step for step in base_workflow_steps if step not in agents_already_run]
                     workflow = remaining_workflow_steps
-
                     self.logger.log(f"Selected workflow (remaining steps): {workflow}", "TaskMaster")
-
                     if workflow:
                         for agent_name in workflow:
-                            # Check for error before delegating to next agent in main sequence
                             if current_workflow_data.get("error"):
                                 self.logger.log(f"Halting main workflow before agent {agent_name} due to prior error.", "TaskMaster", level="WARNING")
                                 break
@@ -751,43 +652,27 @@ class TaskMaster:
                                 break
                     else:
                         self.logger.log("No remaining workflow steps after pre-council agents and filtering.", "TaskMaster", level="INFO")
-            else: # Error occurred during pre-council agent runs
+            else:
                  self.logger.log("Skipping Tech Council and main workflow due to errors during pre-council agent runs.", "TaskMaster", level="WARNING")
-
-            # Debugger run: Trigger if the last agent that ran (could be pre-council or main workflow) had an error
-            # and was a code-producing agent.
-            # Check status of last executed agent (available in current_workflow_data)
             last_agent_status = current_workflow_data.get("status")
-            if last_agent_status != "complete" and current_workflow_data.get("current_agent_name") == "code_writer": # Example: trigger for CodeWriter
+            if last_agent_status != "complete" and current_workflow_data.get("current_agent_name") == "code_writer":
                 self.logger.log(f"CodeWriter agent status: {last_agent_status}. Launching debugger...", "TaskMaster")
                 project_context.error_report = f"Issues detected after {current_workflow_data.get('current_agent_name', 'unknown agent')}. Errors: {current_workflow_data.get('errors')}"
                 save_context(project_context, CONTEXT_JSON_FILE)
                 current_workflow_data, project_context = self.delegate("debugger", current_workflow_data, project_context)
                 save_context(project_context, CONTEXT_JSON_FILE)
 
-
         current_workflow_data["end_time"] = time.time()
         final_output_file = self._save_outputs(current_workflow_data, project_context)
 
-        # Updated final output validation
         if final_output_file and Path(final_output_file).exists():
             self.logger.log(f"Final output snapshot (ProjectContext) saved to {final_output_file}", "TaskMaster")
-            # Validation of ProjectContext is implicitly handled by Pydantic during its lifecycle.
-            # No separate validation of the entire output file with AgentOutput needed for now.
             current_workflow_data["output_file_content_is_project_context_snapshot"] = True
         else:
             self.logger.log("Final output file (ProjectContext snapshot) not found or not created.", "TaskMaster", level="WARNING")
-            # current_workflow_data["validation_error"] was the old field, can keep if something else uses it,
-            # or remove if only AgentOutput validation used it.
             current_workflow_data["output_file_error"] = "Output file (ProjectContext snapshot) not found or not created."
-
-        # Store The actual project details using project_context
-        # The status in the DB should reflect if the overall workflow had an error
         self.store_project_details(current_workflow_data, project_context)
-
         current_workflow_data["output_file"] = final_output_file
-
-        # Merge relevant project_context fields into current_workflow_data for final return
         current_workflow_data['project_name'] = project_context.project_name
         current_workflow_data['objective'] = project_context.objective
         if project_context.analysis:
@@ -798,66 +683,46 @@ class TaskMaster:
             current_workflow_data['architecture'] = project_context.architecture
         if project_context.api_specs:
             current_workflow_data['api_specs'] = project_context.api_specs
-        # Add other fields from project_context as needed by the __main__ block
-
         return current_workflow_data
 
     def delegate(self, agent_name: str, current_workflow_data: dict, project_context: ProjectContext) -> tuple[dict, ProjectContext]:
-        # Skip mobile developer/frontend builder if not needed, based on ProjectContext
         if project_context.analysis:
             if agent_name == "mobile_developer" and not project_context.analysis.mobile_needed:
                 self.logger.log(f"Skipping mobile_developer (not needed based on project context)", "TaskMaster")
-                # Add skip info to current_workflow_data for clarity
                 current_workflow_data[f"{agent_name}_skipped"] = "Not needed as per project analysis"
                 return current_workflow_data, project_context
             if agent_name == "frontend_builder" and not project_context.analysis.frontend_needed:
                 self.logger.log(f"Skipping frontend_builder (not needed based on project context)", "TaskMaster")
                 current_workflow_data[f"{agent_name}_skipped"] = "Not needed as per project analysis"
                 return current_workflow_data, project_context
-        elif agent_name in ["mobile_developer", "frontend_builder"]: # If no analysis, skip them by default if they are called
+        elif agent_name in ["mobile_developer", "frontend_builder"]:
              self.logger.log(f"Skipping {agent_name} as project analysis is not available or indicates not needed.", "TaskMaster")
              current_workflow_data[f"{agent_name}_skipped"] = "Project analysis not available or indicates not needed"
              return current_workflow_data, project_context
 
-
         agent = self.agents[agent_name]
-        # Add agent info to current_workflow_data for logging/ephemeral use
         current_workflow_data['current_agent_name'] = agent_name
         current_workflow_data['current_agent_role'] = agent.role
-        # current_model_used is already part of agent_result, so this line might be redundant if merged later
-        # current_workflow_data['current_model_used'] = agent.current_model
 
         self.logger.log(f"Delegating to {agent.role} ({agent_name})", "TaskMaster")
         try:
-            agent_result = agent.perform_task(project_context) # This now returns the dict with status, errors, warnings
-
-            # Log any warnings from the agent
+            agent_result = agent.perform_task(project_context)
             if agent_result.get("warnings"):
                 for warning_msg in agent_result["warnings"]:
                     self.logger.log(f"Warning from {agent_name}: {warning_msg}", "TaskMaster", level="WARNING")
-
-            # Check status for errors
             if agent_result.get("status") != "complete":
                 error_msg = f"Agent {agent_name} did not complete successfully. Status: {agent_result.get('status')}."
                 if agent_result.get("errors"):
                     error_msg += " Errors: " + "; ".join(agent_result["errors"])
-
                 self.logger.log(error_msg, "TaskMaster", level="ERROR")
-                current_workflow_data["error"] = error_msg # Set the main error message for the workflow
-                # current_workflow_data["agent_errors"] = agent_result.get("errors", []) # Optionally store all errors
-
-            # Merge the entire agent_result into current_workflow_data.
+                current_workflow_data["error"] = error_msg
             current_workflow_data.update(agent_result)
-
             return current_workflow_data, project_context
-
         except Exception as e:
-            # This is for unexpected errors during the agent.perform_task call itself or within delegate logic
             self.logger.log(f"Full traceback for error during delegation to {agent_name}:\n{traceback.format_exc()}", "TaskMaster", level="ERROR")
             error_msg = f"Critical error during delegation to {agent_name}: {str(e)}"
-            self.logger.log(error_msg, "TaskMaster", level="CRITICAL") # Higher level for unexpected
+            self.logger.log(error_msg, "TaskMaster", level="CRITICAL")
             current_workflow_data["error"] = error_msg
-            # Ensure status reflects this critical failure if agent_result wasn't populated
             if "status" not in current_workflow_data or current_workflow_data["status"] == "complete":
                  current_workflow_data["status"] = "critical_error"
             if "errors" not in current_workflow_data:
@@ -867,14 +732,11 @@ class TaskMaster:
 
     def _save_outputs(self, current_workflow_data: dict, project_context: ProjectContext):
         """Save agent output to a shared JSON file, sourcing from ProjectContext."""
-        import os # Already imported at top, but good practice if this were separate
+        import os
     
-        # Use current_agent_name from current_workflow_data if available, else default
         agent_name_for_output = current_workflow_data.get('current_agent_name', "TaskMaster")
         agent_role_for_output = current_workflow_data.get('current_agent_role', "System")
         model_used_for_output = current_workflow_data.get('current_model_used', 'N/A')
-
-        # This output dict is for the specific agent's action or the final summary
         output_details = {
             'agent_name': agent_name_for_output,
             'role': agent_role_for_output,
@@ -883,25 +745,7 @@ class TaskMaster:
             'model_used': model_used_for_output,
             'duration': current_workflow_data.get("end_time", time.time()) - current_workflow_data.get("start_time", time.time())
         }
-
-        # The main content should now come from ProjectContext
-        # This creates a snapshot of the project_context at the time of saving.
         output_content = project_context.model_dump()
-
-        # Merge the specific agent's action details with the project context snapshot
-        # This structure means each agent's "output file" will contain the full project context
-        # plus details about that agent's last action.
-        # If the goal is one file per project, this needs to be structured differently.
-        # Let's assume for now the output file is a snapshot of ProjectContext,
-        # and the ephemeral `output_details` are just for logging or a small part of it.
-
-        # For a single project output file, we'd typically just save project_context.model_dump_json()
-        # The existing code saves multiple entries under agent names in one file.
-        # Let's adapt to save the whole project_context under a general key like "project_snapshot"
-        # or update the "TaskMaster" entry with the full context.
-
-        # Let's simplify: the output file will be a dump of the ProjectContext,
-        # plus some workflow metadata from current_workflow_data.
         final_output_structure = {
             "workflow_metadata": {
                 "start_time": current_workflow_data.get("start_time"),
@@ -912,9 +756,7 @@ class TaskMaster:
             },
             "project_context": project_context.model_dump()
         }
-        current_workflow_data["agent_name_for_final_output"] = agent_name_for_output # For validation
-
-        # Determine project_type from project_context
+        current_workflow_data["agent_name_for_final_output"] = agent_name_for_output
         project_type_str = project_context.project_type
         if project_context.analysis and project_context.analysis.project_type_confirmed:
             project_type_str = project_context.analysis.project_type_confirmed
@@ -933,20 +775,14 @@ class TaskMaster:
 
     def store_project_details(self, current_workflow_data: dict, project_context: ProjectContext):
         try:
-            # Source data primarily from project_context
             project_name = project_context.project_name
             objective = project_context.objective
             project_type = project_context.analysis.project_type_confirmed if project_context.analysis else project_context.project_type
-
-            # Ephemeral data from current_workflow_data
             start_time = current_workflow_data.get("start_time", time.time())
             end_time = current_workflow_data.get("end_time", time.time())
             status = "completed" if not current_workflow_data.get("error") else "error"
-            user_input = current_workflow_data.get("user_input", project_context.objective) # Fallback to objective
-
-            # Model used might be the last one in current_workflow_data or a general one
+            user_input = current_workflow_data.get("user_input", project_context.objective)
             model_used = current_workflow_data.get('current_model_used', 'N/A')
-
             sql = """
             INSERT OR REPLACE INTO projects (project_name, objective, project_type, start_time, end_time, status, user_input, model_used)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
