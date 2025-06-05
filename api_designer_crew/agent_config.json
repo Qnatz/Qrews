@@ -1,0 +1,9 @@
+{
+  "endpoint_planner": "gemini-1.5-pro-latest",
+  "schema_designer": "gemini-1.5-pro-latest",
+  "request_response_designer": "gemini-pro",
+  "auth_designer": "gemini-pro",
+  "error_designer": "gemini-1.5-pro-latest",
+  "openapi_merger": "system",
+  "openapi_validator": "system"
+}
