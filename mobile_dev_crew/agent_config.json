@@ -1,0 +1,9 @@
+{
+  "ui_structure_designer": "Gemini 2.0",
+  "component_designer": "Gemini 1.5",
+  "api_binder": "Gemini 1.5",
+  "state_manager": "Gemini 1.5",
+  "form_validator": "Gemini 1.5",
+  "test_designer": "Gemini 1.5",
+  "mobile_merger": "System"
+}
