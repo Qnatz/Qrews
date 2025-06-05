@@ -550,7 +550,7 @@ Final Answer:
 ```
 """
 
-FRONTEND_BUILDER_PROMPT = AGENT_ROLE_TEMPLATE + """
+WEB_DEVELOPER_PROMPT = AGENT_ROLE_TEMPLATE + """
 You are a Frontend Developer specializing in **{tech_stack_frontend_name}**. You're part of an AI development team working on:
 Project: {project_name}
 Objective: {objective}
@@ -1074,7 +1074,7 @@ AGENT_PROMPTS = {
     "architect": ARCHITECT_PROMPT,
     "api_designer": API_DESIGNER_PROMPT,
     "code_writer": CODE_WRITER_PROMPT,
-    "web_developer": WEB_DEVELOPER_PROMPT, # Renamed from frontend_builder
+    "web_developer": WEB_DEVELOPER_PROMPT, # RENAMED from frontend_builder
     "mobile_developer": MOBILE_DEVELOPER_PROMPT,
     "tester": TESTER_PROMPT,
     "debugger": DEBUGGER_PROMPT,
