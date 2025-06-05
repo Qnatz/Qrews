@@ -17,8 +17,8 @@ from agents.base_agent import (
     ProjectAnalyzer, Planner, Architect, APIDesigner,
     CodeWriter, FrontendBuilder, MobileDeveloper,
     Tester, Debugger)
-from utils.general_utils import Logger, DEEPSEEK_TIMEOUT
-from utils.crew_llm_service import LocalLLMClient
+from utils.general_utils import Logger, DEEPSEEK_TIMEOUT # DEEPSEEK_TIMEOUT might be unused now
+from utils.local_llm_client import LocalLLMClient # CORRECTED
 from utils.database import Database
 from prompts.general_prompts import get_agent_prompt
 from utils.tools import ToolKit, TOOL_DESCRIPTIONS
@@ -52,7 +52,8 @@ class TaskMaster:
 
     def __init__(self):
         self.logger = Logger()
-        self.deepseek = LocalLLMClient(default_timeout=DEEPSEEK_TIMEOUT) # Changed LocalDeepSeek to LocalLLMClient and removed port
+        # self.deepseek = LocalLLMClient(default_timeout=DEEPSEEK_TIMEOUT) # OLD Instantiation
+        self.deepseek = LocalLLMClient(logger=self.logger) # CORRECTED Instantiation
         self.db = Database()  # Database instance for TaskMaster
         self.db.connect()  # Connect to the database
         self.tool_kit = ToolKit(logger=self.logger, auto_lint=True, db=self.db) # DB here
@@ -62,64 +63,34 @@ class TaskMaster:
             "planner": Planner(self.logger, db = self.db),
             "architect": Architect(self.logger, db = self.db),
             "api_designer": APIDesigner(self.logger, db = self.db),
-            "code_writer": CodeWriter(self.logger, db = self.db), #, self.deepseek),
+            "code_writer": CodeWriter(self.logger, db = self.db),
             "frontend_builder": FrontendBuilder(self.logger, db = self.db),
             "mobile_developer": MobileDeveloper(self.logger, db = self.db),
             "tester": Tester(self.logger, db = self.db),
-            "debugger": Debugger(self.logger, db = self.db) #, self.deepseek)
+            "debugger": Debugger(self.logger, db = self.db)
         }
 
         for agent_name, agent_instance in self.agents.items():
             tools_for_agent = self.TOOL_MAPPING.get(agent_name, [])
             agent_instance.tool_kit = self.tool_kit
             agent_instance.tools = [TOOL_DESCRIPTIONS[t] for t in tools_for_agent if t in TOOL_DESCRIPTIONS]
-            agent_instance.db = self.db   # Database instance for Agent
-            #NO self.tool_kit.db = self.db  # NO DB here # No longer required, as ToolKit gets db in init
+            agent_instance.db = self.db
             self.logger.log(f"Assigned tools to {agent_name}: {[t['name'] for t in agent_instance.tools]}")
 
         self.logger.log("TaskMaster initialized with dynamic workflows")
 
     def run_tech_council_negotiation(self, project_context: ProjectContext) -> ProjectContext:
-        """
-        Orchestrates the Tech Council negotiation process to decide on the project's technology stack.
-
-        This method processes technology proposals from agents, resolves conflicts,
-        checks for dependencies, and facilitates consensus locking among key agents.
-        The results (approved stack, rationale, concerns) are updated in the project_context.
-
-        Args:
-            project_context: The current ProjectContext object.
-
-        Returns:
-            The updated ProjectContext object after the negotiation process.
-        """
         self.logger.log("Starting Tech Council Negotiation phase...", "TaskMaster")
-
-        # Step a: Ensure Platform Detection is Done (implicitly by ProjectAnalyzer before this call)
-        # Basic check for platform_requirements, critical for decision making.
         if not project_context.platform_requirements:
             self.logger.log("Platform requirements not found. This should have been populated by ProjectAnalyzer.", "TaskMaster", level="ERROR")
-            # If platform_requirements are absolutely critical and missing, could return early or raise an error.
-            # For now, we log an error and proceed, but subsequent steps might be compromised.
             project_context.decision_rationale["tech_council_negotiation_error"] = "Critical: Platform requirements missing at the start of negotiation."
-            # Depending on strictness, could return project_context here.
-            # However, the initial check already covers this. This is a safeguard/log.
-
-        # Initialize ApprovedTechStack and decision_rationale if they are None
         if project_context.approved_tech_stack is None:
             project_context.approved_tech_stack = ApprovedTechStack()
             self.logger.log("Initialized empty ApprovedTechStack in project_context.", "TaskMaster")
-        if project_context.decision_rationale is None: # Should be initialized by default_factory, but as a safeguard.
+        if project_context.decision_rationale is None:
             project_context.decision_rationale = {}
             self.logger.log("Initialized empty decision_rationale in project_context.", "TaskMaster")
-
         self.logger.log(f"Tech Council: Initial tech proposals count: {sum(len(v) for v in project_context.tech_proposals.values()) if project_context.tech_proposals else 0}", "TaskMaster")
-
-        # Step b: Tech Proposal Phase (Simplified)
-        # Assumes project_context.tech_proposals is already populated by agents like Architect, MobileDeveloper
-        # during their main `perform_task` runs, guided by their updated prompts.
-
-        # Step c: Conflict Resolution Phase
         self.logger.log("Tech Council: Starting Conflict Resolution sub-phase...", "TaskMaster")
         if not project_context.tech_proposals:
             self.logger.log("Tech Council: No tech proposals found. Skipping conflict resolution.", "TaskMaster", level="WARNING")
@@ -130,12 +101,10 @@ class TaskMaster:
                     self.logger.log(f"Tech Council: No proposals for category '{category}'. Skipping.", "TaskMaster", level="WARNING")
                     project_context.decision_rationale[category] = "No proposals received for this category."
                     continue
-
                 proposals_list_dicts = [p.model_dump() for p in proposals_list_models]
                 chosen_technology_name: Optional[str] = None
                 decision_reason: str = "No decision made."
-                confidence_notes_for_category = [] # To store notes about low confidence proposals
-
+                confidence_notes_for_category = []
                 if len(proposals_list_dicts) == 1:
                     chosen_proposal_dict = proposals_list_dicts[0]
                     chosen_technology_name = chosen_proposal_dict.get("technology")
@@ -143,35 +112,24 @@ class TaskMaster:
                     self.logger.log(f"Tech Council: Category '{category}': Single proposal '{chosen_technology_name}' chosen.", "TaskMaster")
                     if chosen_proposal_dict.get('confidence', 1.0) < 0.8:
                         confidence_notes_for_category.append(f"Low confidence proposal ({chosen_proposal_dict.get('technology')}, {chosen_proposal_dict.get('confidence', 'N/A')}) included.")
-                else: # Multiple proposals, need conflict resolution
-                    # Refactored logic for mobile_database Room vs Realm and general conflict resolution
+                else:
                     if category == "mobile_database":
                         proposal_names = [p.get("technology", "").lower() for p in proposals_list_dicts]
                         has_room = any("room" in name for name in proposal_names)
                         has_realm = any("realm" in name for name in proposal_names)
-
                         if has_room and has_realm:
                             self.logger.log(f"Tech Council: Category '{category}': Both Room and Realm proposed. This combination requires careful review. Proceeding with general conflict resolution, but flagging for mandatory review.", "TaskMaster", level="WARNING")
-                            # Set a special decision_reason, but let general resolution pick one initially.
-                            # This primed reason will be used if no other reason is generated by the conflict resolution tools.
                             decision_reason = "Proposals for both Room (SQL-based) and Realm (NoSQL) were received. Room is often preferred for standard Android/Kotlin projects due to Jetpack integration. Choosing Realm requires strong justification due to potential complexities. Current selection will be based on confidence and justification provided by proposals. MANDATORY REVIEW: Carefully assess if the chosen mobile DB aligns with project complexity and data model."
-                            # Do NOT set chosen_technology_name here, let it go to general conflict resolution.
-                            # Do NOT 'continue' here.
-
-                    # General conflict resolution for all cases
                     try:
                         resolution = self.tool_kit.resolve_tech_conflict(proposals=proposals_list_dicts)
                         self.logger.log(f"Tech Council: Category '{category}': Conflict resolution tool output: {resolution}", "TaskMaster")
-
                         if resolution["decision"] == "use_proposal":
                             chosen_proposal_dict = resolution.get("proposal", {})
                             chosen_technology_name = chosen_proposal_dict.get("technology")
-                            # If decision_reason wasn't primed by Room/Realm special case, use the tool's reason.
                             if not (category == "mobile_database" and has_room and has_realm):
                                 decision_reason = resolution.get("reason", "Resolved by confidence.")
                             if chosen_proposal_dict.get('confidence', 1.0) < 0.8:
                                 confidence_notes_for_category.append(f"Low confidence proposal ({chosen_proposal_dict.get('technology')}, {chosen_proposal_dict.get('confidence', 'N/A')}) included.")
-
                         elif resolution["decision"] == "needs_hybrid":
                             hybrid_proposals_input = resolution.get("proposals", [])
                             hybrid_tech_names = {p.get("technology","").lower() for p in hybrid_proposals_input}
@@ -181,11 +139,8 @@ class TaskMaster:
                                 realm_present_in_hybrid_input = any("realm" in name for name in hybrid_tech_names)
                                 if room_present_in_hybrid_input and realm_present_in_hybrid_input:
                                     is_room_realm_hybrid_scenario = True
-
                             if is_room_realm_hybrid_scenario:
                                 self.logger.log(f"Tech Council: Category '{category}': Hybrid solution suggested for Room and Realm. This specific hybrid is disallowed. Defaulting to highest confidence single proposal from the Room/Realm pair.", "TaskMaster", level="WARNING")
-                                # Fallback to highest confidence from the original proposals_list_dicts for Room/Realm
-                                # Ensure we only consider Room or Realm proposals from the original list for this fallback.
                                 room_realm_proposals = [p for p in proposals_list_dicts if "room" in p.get("technology","").lower() or "realm" in p.get("technology","").lower()]
                                 sorted_proposals = sorted(room_realm_proposals, key=lambda p: p.get('confidence', 0.0), reverse=True)
                                 if sorted_proposals:
@@ -194,10 +149,10 @@ class TaskMaster:
                                     decision_reason = f"Room/Realm hybrid rejected. Defaulted to '{chosen_technology_name}' due to higher confidence. MANDATORY REVIEW still applies."
                                     if chosen_proposal_dict.get('confidence', 1.0) < 0.8:
                                         confidence_notes_for_category.append(f"Low confidence proposal ({chosen_proposal_dict.get('technology')}, {chosen_proposal_dict.get('confidence', 'N/A')}) chosen as fallback from Room/Realm pair.")
-                                else: # Should not happen if has_room and has_realm was true
+                                else:
                                     decision_reason = "Room/Realm hybrid rejected, but failed to find highest confidence fallback. Needs manual intervention."
                                     self.logger.log(f"Tech Council: {decision_reason}", "TaskMaster", level="ERROR")
-                            else: # Proceed with general hybrid creation
+                            else:
                                 hybrid_result = self.tool_kit.create_hybrid_solution(proposals=hybrid_proposals_input, category=category)
                                 self.logger.log(f"Tech Council: Category '{category}': Hybrid solution tool output: {hybrid_result}", "TaskMaster")
                                 if hybrid_result.get("solution_type") not in ["error", None] and hybrid_result.get("description"):
@@ -209,17 +164,15 @@ class TaskMaster:
                                 else:
                                     decision_reason = f"Hybrid creation failed: {hybrid_result.get('description', 'Unknown')}. Defaulting to highest confidence."
                                     self.logger.log(f"Tech Council: {decision_reason}", "TaskMaster", level="WARNING")
-                                    # General fallback for failed hybrid (not specific to Room/Realm)
                                     general_sorted_proposals = sorted(proposals_list_dicts, key=lambda p: p.get('confidence', 0.0), reverse=True)
                                     if general_sorted_proposals:
                                         chosen_proposal_dict = general_sorted_proposals[0]
                                         chosen_technology_name = chosen_proposal_dict.get("technology")
                                         if chosen_proposal_dict.get('confidence', 1.0) < 0.8:
                                             confidence_notes_for_category.append(f"Low confidence proposal ({chosen_proposal_dict.get('technology')}, {chosen_proposal_dict.get('confidence', 'N/A')}) chosen as fallback after general hybrid failure.")
-                        else: # Error from resolve_tech_conflict or other unhandled decision
+                        else:
                              decision_reason = f"Conflict resolution error: {resolution.get('reason', 'Unknown')}. Defaulting to highest confidence."
                              self.logger.log(f"Tech Council: {decision_reason}", "TaskMaster", level="ERROR")
-                             # General fallback for resolution error
                              general_sorted_proposals_on_error = sorted(proposals_list_dicts, key=lambda p: p.get('confidence', 0.0), reverse=True)
                              if general_sorted_proposals_on_error:
                                  chosen_proposal_dict = general_sorted_proposals_on_error[0]
@@ -235,10 +188,7 @@ class TaskMaster:
                             chosen_technology_name = chosen_proposal_dict.get("technology")
                             if chosen_proposal_dict.get('confidence', 1.0) < 0.8:
                                 confidence_notes_for_category.append(f"Low confidence proposal ({chosen_proposal_dict.get('technology')}, {chosen_proposal_dict.get('confidence', 'N/A')}) chosen as fallback after exception.")
-
-                # This block applies if chosen_technology_name was set by the general conflict resolution
-                # or if it was a single proposal. It's skipped if the Room/Realm special case used 'continue'.
-                if chosen_technology_name: # This implies it wasn't the Room/Realm case that used 'continue'
+                if chosen_technology_name:
                     field_name = category
                     if hasattr(project_context.approved_tech_stack, field_name):
                         setattr(project_context.approved_tech_stack, field_name, chosen_technology_name)
@@ -247,9 +197,8 @@ class TaskMaster:
                         if confidence_notes_for_category:
                              full_rationale += " MANDATORY REVIEW NOTES: " + " | ".join(confidence_notes_for_category)
                         project_context.decision_rationale[category] = full_rationale
-                    else: # Category from proposals doesn't match a field in ApprovedTechStack model
+                    else:
                         self.logger.log(f"Tech Council: Category '{category}' (resolved to: {chosen_technology_name}) not a direct field in ApprovedTechStack. Storing in rationale.", "TaskMaster", level="WARNING")
-                        # Store the decision in rationale under the category key
                         full_rationale = f"Chosen for {category}: {chosen_technology_name}. Reason: {decision_reason}."
                         if confidence_notes_for_category:
                              full_rationale += " MANDATORY REVIEW NOTES: " + " | ".join(confidence_notes_for_category)
@@ -257,15 +206,11 @@ class TaskMaster:
                 else:
                     self.logger.log(f"Tech Council: No technology chosen for category '{category}' after conflict resolution.", "TaskMaster", level="WARNING")
                     project_context.decision_rationale[category] = "No technology could be conclusively chosen for this category."
-
-
-        # Step d: Dependency Check Phase
         self.logger.log("Tech Council: Starting Dependency Check sub-phase...", "TaskMaster")
         if project_context.approved_tech_stack:
             try:
-                # Use model_dump(exclude_none=True) to only pass selected technologies to the tool
                 stack_to_check = project_context.approved_tech_stack.model_dump(exclude_none=True)
-                if stack_to_check: # Only run if there's something in the stack
+                if stack_to_check:
                     dep_check_result = self.tool_kit.check_technology_dependencies(tech_stack=stack_to_check)
                     self.logger.log(f"Tech Council: Dependency check result: {dep_check_result}", "TaskMaster")
                     project_context.decision_rationale["dependency_checks"] = {
@@ -280,36 +225,30 @@ class TaskMaster:
             except Exception as e:
                 self.logger.log(f"Tech Council: Error during dependency check: {e}", "TaskMaster", level="ERROR")
                 project_context.decision_rationale["dependency_checks_error"] = str(e)
-        else: # Should not happen if initialized above, but as a safeguard
+        else:
             self.logger.log("Tech Council: Approved tech stack not available for dependency check.", "TaskMaster", level="WARNING")
-
-        # Step e: Consensus Locking Phase
         self.logger.log("Tech Council: Starting Consensus Locking sub-phase...", "TaskMaster")
         if not project_context.approved_tech_stack or not project_context.platform_requirements:
             self.logger.log("Tech Council: Cannot perform consensus locking: approved_tech_stack or platform_requirements missing.", "TaskMaster", level="ERROR")
             project_context.decision_rationale["consensus"] = "Skipped: Missing approved_tech_stack or platform_requirements."
         else:
-            key_agent_roles_to_consult = ["architect"] # Architect is always consulted
+            key_agent_roles_to_consult = ["architect"]
             if project_context.platform_requirements.ios or project_context.platform_requirements.android:
-                key_agent_roles_to_consult.append("mobile developer") # Add mobile dev if it's a mobile project
-
+                key_agent_roles_to_consult.append("mobile developer")
             agents_to_consult_instances = []
             for role_keyword in key_agent_roles_to_consult:
-                for agent_instance in self.agents.values(): # self.agents is Dict[str, Agent]
-                    if role_keyword in agent_instance.role.lower(): # Check if agent's role matches
+                for agent_instance in self.agents.values():
+                    if role_keyword in agent_instance.role.lower():
                         if agent_instance not in agents_to_consult_instances:
                              agents_to_consult_instances.append(agent_instance)
-
             if not agents_to_consult_instances:
                  self.logger.log("Tech Council: No specific validating agents found for consensus. Defaulting to approval (or review by human).", "TaskMaster", level="WARNING")
                  project_context.decision_rationale["consensus"] = "Conditionally Achieved (No specific AI validators for this configuration)."
             else:
                 all_agents_approve = True
                 all_concerns = []
-                # Use model_dump(exclude_none=True) for the stack to validate only selected items
                 current_approved_stack_dict = project_context.approved_tech_stack.model_dump(exclude_none=True)
                 current_platform_reqs_dict = project_context.platform_requirements.model_dump()
-
                 for agent in agents_to_consult_instances:
                     try:
                         validation_result = agent.validate_stack(
@@ -325,7 +264,6 @@ class TaskMaster:
                         self.logger.log(f"Tech Council: Error during validation by agent {agent.name} ({agent.role}): {e}", "TaskMaster", level="ERROR")
                         all_agents_approve = False
                         all_concerns.append(f"{agent.name} ({agent.role}): Validation process failed with exception - {e}")
-
                 if all_agents_approve:
                     self.logger.log("Tech Council: Consensus achieved. Tech stack locked.", "TaskMaster")
                     project_context.decision_rationale["consensus"] = "Achieved"
@@ -333,11 +271,8 @@ class TaskMaster:
                     self.logger.log(f"Tech Council: Consensus failed. Concerns: {all_concerns}", "TaskMaster", level="ERROR")
                     project_context.decision_rationale["consensus"] = "Failed"
                     project_context.decision_rationale["consensus_concerns"] = all_concerns
-
-        # Step f: Context Finalization
         self.logger.log("Tech Council Negotiation phase finished.", "TaskMaster")
         return project_context
-
 
     def start_workflow(self, user_input):
         project_context = load_context(CONTEXT_JSON_FILE)
