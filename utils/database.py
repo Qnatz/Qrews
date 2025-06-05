@@ -2,6 +2,7 @@ import sqlite3
 import numpy as np
 from numpy.linalg import norm
 import time # For timestamp in store_embedding if we re-add it
+from typing import Optional, List, Tuple # ADDED
 
 class Database:
     def __init__(self, db_file_path: str = "qnatz_crew.db"):
@@ -10,8 +11,8 @@ class Database:
         :param db_file_path: Path to the SQLite database file.
         """
         self.db_file_path = db_file_path
-        self.conn = None
-        self.cursor = None
+        self.conn: Optional[sqlite3.Connection] = None # Type hint for conn
+        self.cursor: Optional[sqlite3.Cursor] = None # Type hint for cursor
         self._connect_and_initialize()
 
     def _connect_and_initialize(self):
@@ -28,24 +29,28 @@ class Database:
 
     def _create_memory_table(self):
         """Creates the memory table if it doesn't already exist."""
-        self.cursor.execute("""
-        CREATE TABLE IF NOT EXISTS memory (
-            item_id TEXT PRIMARY KEY,
-            agent_id TEXT,
-            role TEXT,
-            content TEXT,
-            embedding BLOB,
-            creation_time REAL
-        )
-        """)
-        self.conn.commit()
+        if self.cursor:
+            self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS memory (
+                item_id TEXT PRIMARY KEY,
+                agent_id TEXT,
+                role TEXT,
+                content TEXT,
+                embedding BLOB,
+                creation_time REAL
+            )
+            """)
+        if self.conn:
+            self.conn.commit()
 
     @staticmethod
-    def _cosine_similarity(a, b):
+    def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float: # Type hint
         """Calculate cosine similarity between two numpy arrays."""
-        if norm(a) == 0 or norm(b) == 0: # Handle zero vectors
+        norm_a = norm(a)
+        norm_b = norm(b)
+        if norm_a == 0 or norm_b == 0: # Handle zero vectors
             return 0.0
-        return np.dot(a, b) / (norm(a) * norm(b))
+        return np.dot(a, b) / (norm_a * norm_b)
 
     def store_embedding(self, item_id: str, agent_id: str, role: str, content: str, embedding: np.ndarray) -> bool:
         """
@@ -67,7 +72,7 @@ class Database:
             print(f"Error storing embedding for item_id {item_id}: {e}")
             return False
 
-    def retrieve_similar_items(self, query_embedding: np.ndarray, top_k: int = 5) -> list:
+    def retrieve_similar_items(self, query_embedding: np.ndarray, top_k: int = 5) -> List[Tuple[str, str, str, str, float]]: # Type hint
         """
         Retrieves similar items based on cosine similarity.
         Returns a list of tuples: (item_id, agent_id, role, content, similarity)
@@ -79,16 +84,15 @@ class Database:
         query_embedding_np = np.array(query_embedding, dtype=np.float32) # Ensure it's a numpy array
 
         try:
-            # Changed to use self.cursor instead of self.conn.execute for consistency
             self.cursor.execute("SELECT item_id, agent_id, role, content, embedding FROM memory")
-            rows = self.cursor.fetchall()
+            rows: List[Tuple[str, str, str, str, bytes]] = self.cursor.fetchall() # Type hint for rows
 
-            results = []
-            for row in rows:
-                item_id, agent_id, role, content, embedding_bytes = row
+            results: List[Tuple[str, str, str, str, float]] = [] # Type hint for results
+            for row_data in rows: # Renamed row to row_data to avoid conflict with outer scope (if any)
+                item_id, agent_id, role, content, embedding_bytes = row_data
                 embedding = np.frombuffer(embedding_bytes, dtype=np.float32)
                 similarity = self._cosine_similarity(query_embedding_np, embedding)
-                results.append((item_id, agent_id, role, content, similarity))
+                results.append((item_id, agent_id, role, content, float(similarity))) # Cast similarity to float
 
             results.sort(key=lambda x: x[4], reverse=True)
             return results[:top_k]
@@ -96,19 +100,18 @@ class Database:
             print(f"Error retrieving similar items: {e}")
             return []
 
-    def execute(self, sql: str, params=None) -> Optional[sqlite3.Cursor]:
+    def execute(self, sql: str, params: Optional[tuple] = None) -> Optional[sqlite3.Cursor]: # Type hint for params
         """Execute an SQL query. Useful for other operations if needed."""
-        if not self.conn:
+        if not self.conn or not self.cursor:
             print("Not connected to database")
             return None
         try:
-            cursor = self.conn.cursor()
             if params:
-                cursor.execute(sql, params)
+                self.cursor.execute(sql, params)
             else:
-                cursor.execute(sql)
+                self.cursor.execute(sql)
             self.conn.commit()
-            return cursor
+            return self.cursor
         except sqlite3.Error as e:
             print(f"Error executing SQL: {sql}, Error: {e}")
             return None
@@ -122,6 +125,8 @@ class Database:
             # Consider logging successful disconnection
 
 if __name__ == '__main__':
+    # Added os import for file removal
+    import os
     print("--- Testing Database Class ---")
     db_instance = Database(db_file_path="test_qnatz_crew.db") # Use a test DB file
 
