@@ -55,7 +55,6 @@ class TaskMaster:
         # self.deepseek = LocalLLMClient(default_timeout=DEEPSEEK_TIMEOUT) # OLD Instantiation
         self.deepseek = LocalLLMClient(logger=self.logger) # CORRECTED Instantiation
         self.db = Database()  # Database instance for TaskMaster
-        self.db.connect()  # Connect to the database
         self.tool_kit = ToolKit(logger=self.logger, auto_lint=True, db=self.db) # DB here
 
         self.agents = {
@@ -732,7 +731,7 @@ class TaskMaster:
 
     def cleanup(self):
         """Disconnect from the database on shutdown"""
-        self.db.disconnect()
+        self.db.close()
         self.logger.log("Disconnected from the database.", "TaskMaster")
 
 
