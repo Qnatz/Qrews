@@ -2,6 +2,7 @@
 Comprehensive prompt templates for AI agent workflow, adhering to Web Crew Prompt Engineering Guidelines.
 """
 import json # Added for debugging logs
+from prompts.web_dev_prompts import WEB_DEV_AGENT_PROMPTS
 
 # ============== BASE TEMPLATES ==============
 AGENT_ROLE_TEMPLATE = """
@@ -1117,6 +1118,7 @@ AGENT_PROMPTS = {
     "debugger": DEBUGGER_PROMPT,
     "tech_negotiator": TECH_NEGOTIATOR_PROMPT,
 }
+AGENT_PROMPTS.update(WEB_DEV_AGENT_PROMPTS)
 
 # ============== HELPER FUNCTIONS ==============
 def get_agent_prompt(agent_name, context):
@@ -1165,6 +1167,24 @@ def get_agent_prompt(agent_name, context):
         'KEY_REQUIREMENTS_FOR_ARCHITECTURE': "Key requirements not available.",
         # Tech Negotiator specific
         'KEY_REQUIREMENTS': "Key requirements not available.",
+        # Web Dev Crew Specific (can be generalized or moved if other crews use them)
+        'USER_STORIES': context.get('USER_STORIES', 'N/A'), # Note: Keys for web_dev_prompts are already uppercase
+        'EXISTING_PAGES_INFO': context.get('EXISTING_PAGES_INFO', 'N/A'),
+        'DESIGN_SYSTEM_GUIDELINES': context.get('DESIGN_SYSTEM_GUIDELINES', 'N/A'),
+        'PAGE_STRUCTURE_JSON': context.get('PAGE_STRUCTURE_JSON', '{}'),
+        'EXISTING_COMPONENTS_INFO': context.get('EXISTING_COMPONENTS_INFO', 'N/A'),
+        'API_SPECIFICATIONS_JSON': context.get('API_SPECIFICATIONS_JSON', '{}'),
+        'EXISTING_HOOKS_INFO': context.get('EXISTING_HOOKS_INFO', 'N/A'),
+        'COMPONENT_SPECS_JSON': context.get('COMPONENT_SPECS_JSON', '{}'),
+        'API_HOOKS_CODE': context.get('API_HOOKS_CODE', 'N/A'),
+        'VALIDATION_RULES_INFO': context.get('VALIDATION_RULES_INFO', 'N/A'),
+        'EXISTING_STATE_MGMT_INFO': context.get('EXISTING_STATE_MGMT_INFO', 'N/A'),
+        'STYLE_GUIDE_SUMMARY': context.get('STYLE_GUIDE_SUMMARY', 'N/A'),
+        'EXISTING_STYLING_INFO': context.get('EXISTING_STYLING_INFO', 'N/A'),
+        'LOGGING_SERVICE_INFO': context.get('LOGGING_SERVICE_INFO', 'N/A'),
+        'FORM_HANDLER_LOGIC_JSON': context.get('FORM_HANDLER_LOGIC_JSON', '{}'),
+        'STATE_MANAGEMENT_SETUP_JSON': context.get('STATE_MANAGEMENT_SETUP_JSON', '{}'),
+        'EXISTING_TESTS_INFO': context.get('EXISTING_TESTS_INFO', 'N/A'),
     }
 
     # Populate COMMON_CONTEXT (can be complex, handle with care)
@@ -1200,14 +1220,13 @@ def get_agent_prompt(agent_name, context):
             MEMORIES=str(agent_context['MEMORIES']) # Ensure string
         )
 
-    # Agent-specific context preparations
-    if agent_name == "tech_negotiator":
-        analysis_data = context.get("analysis", {}) # Main context, not agent_context
+    # Agent-specific context preparations (most are now covered by the extended agent_context population)
+    if agent_name == "tech_negotiator": # Requires KEY_REQUIREMENTS to be a string
+        analysis_data = context.get("analysis", {})
         key_reqs_list = analysis_data.get("key_requirements", [])
         agent_context['KEY_REQUIREMENTS'] = "\n".join([f"- {req}" for req in key_reqs_list]) if isinstance(key_reqs_list, list) else "Key requirements not available or not in list format."
-        # TECH_STACK_FRONTEND etc. for negotiator are already in agent_context from initial population
 
-    if agent_name == "api_designer":
+    if agent_name == "api_designer": # Requires specific summaries
         analysis_data = context.get("analysis", {})
         key_reqs_list = analysis_data.get("key_requirements", [])
         agent_context['ANALYSIS_SUMMARY_FOR_API_DESIGN'] = "\n".join([f"- {req}" for req in key_reqs_list]) if isinstance(key_reqs_list, list) else "Key requirements not available."
@@ -1225,8 +1244,9 @@ def get_agent_prompt(agent_name, context):
         agent_context['PLAN_SUMMARY_FOR_API_DESIGN'] = "\n".join(plan_summary_list) if plan_summary_list else "Plan details not available."
 
 
-    if agent_name == "architect":
+    if agent_name == "architect": # Requires RELEVANT_TECH_STACK_LIST and specific summaries
         tech_lines = []
+        # Use ANALYSIS from agent_context as it's already populated
         project_type_confirmed = agent_context['ANALYSIS'].get('project_type_confirmed', agent_context['PROJECT_TYPE'])
 
         fe_name = agent_context['TECH_STACK_FRONTEND_NAME']
@@ -1240,33 +1260,27 @@ def get_agent_prompt(agent_name, context):
             tech_lines.append(f"- Database: {db_name}")
         agent_context['RELEVANT_TECH_STACK_LIST'] = "\n".join(tech_lines) if tech_lines else "  (No specific core technologies defined for the project type)"
 
-        analysis_data = agent_context['ANALYSIS'] # Already populated in agent_context
+        analysis_data = agent_context['ANALYSIS']
         agent_context['ANALYSIS_SUMMARY_FOR_ARCHITECTURE'] = f"Project Type Confirmed: {project_type_confirmed}. Key Focus: Guiding architecture based on requirements."
         key_reqs_list = analysis_data.get("key_requirements", [])
         agent_context['KEY_REQUIREMENTS_FOR_ARCHITECTURE'] = "\n".join([f"- {req}" for req in key_reqs_list]) if isinstance(key_reqs_list, list) else "Key requirements not available."
 
-    if agent_name == "code_writer":
-        arch_data = context.get('architecture') # Main context
+    if agent_name == "code_writer": # Requires PROJECT_DIRECTORY_STRUCTURE
+        arch_data = context.get('architecture')
         if isinstance(arch_data, dict) and isinstance(arch_data.get('architecture_design'), dict):
             agent_context['PROJECT_DIRECTORY_STRUCTURE'] = arch_data['architecture_design'].get('diagram', 'Project directory structure not detailed in architecture.')
-        # CURRENT_FILE_PATH is set by TaskMaster and passed in context.get('current_file_path')
 
-    # Get base prompt for this agent using all UPPER_SNAKE_CASE keys from agent_context
     base_prompt_template = AGENT_PROMPTS.get(agent_name)
     if not base_prompt_template:
-        return f"Error: Prompt for agent '{agent_name}' not found."
+        return f"Error: Prompt for agent '{agent_name}' not found. AGENT_PROMPTS keys: {list(AGENT_PROMPTS.keys())}"
     
-    # Ensure all expected keys for the specific prompt are in agent_context before formatting
-    # This is a safeguard; ideally, agent_context setup above handles all needs.
-    # For complex prompts, explicitly list keys they use from AGENT_ROLE_TEMPLATE, their specific section, and COMMON_CONTEXT_TEMPLATE.
-    # Example: planner_keys = ['ROLE', 'SPECIALTY', ..., 'TECH_STACK_FRONTEND_NAME', ..., 'COMMON_CONTEXT']
-    # missing_keys = [key for key in planner_keys if key not in agent_context]
-    # if missing_keys: print(f"Warning: Missing keys for {agent_name}: {missing_keys}")
-
     try:
+        # All keys in agent_context are already UPPER_SNAKE_CASE
         base_prompt = base_prompt_template.format(**agent_context)
     except KeyError as e:
-        return f"Error formatting prompt for {agent_name}: Missing key {e}. Available keys: {list(agent_context.keys())}"
+        # This error means a placeholder in the template string was not found in agent_context
+        # This can happen if a new placeholder is added to a template but not to the agent_context dict above
+        return f"Error formatting prompt for {agent_name}: Missing key {e}. Available keys in agent_context: {list(agent_context.keys())}"
     except Exception as e_format:
          return f"Error formatting prompt for {agent_name}: {e_format}. Context dump (partial): {str(agent_context)[:500]}"
 
@@ -1280,59 +1294,49 @@ def get_agent_prompt(agent_name, context):
     if any(t.get('name', '').startswith('ctags') for t in context.get('tools', [])):
         ctags_specific = "\n=== CTAGS SPECIALIZATION ===\nREQUIRED: You MUST prefer ctags for symbol navigation over text search where applicable."
     
-    # TOOL_PROMPT_SECTION expects TOOL_DESCRIPTIONS and CTAGS_TIPS
-    # CTAGS_TIPS itself will be NAVIGATION_TIPS + ctags_specific
     tool_section = TOOL_PROMPT_SECTION.format(
         TOOL_DESCRIPTIONS=tool_descriptions if tool_descriptions else "No tools available for description.",
         CTAGS_TIPS=ctags_tips_content + ctags_specific,
-        CURRENT_DIR=agent_context['CURRENT_DIR'] # Added as TOOL_PROMPT_SECTION uses it
+        CURRENT_DIR=agent_context['CURRENT_DIR']
     )
     
-    # Add example workflow (these are illustrative, not directly formatted with context)
-    # example_workflow = EXAMPLE_WORKFLOWS.get(agent_name, "") # Not strictly needed if prompts are self-contained
-    
-    # For prompts that embed RESPONSE_FORMAT_TEMPLATE, ensure its {TOOL_NAMES} is also substituted
-    # This is tricky because some prompts build on others.
-    # The main substitution of {TOOL_NAMES} in RESPONSE_FORMAT_TEMPLATE is done when that template is initially defined.
-    # If a specific agent prompt *overrides* or *redefines* parts that include {TOOL_NAMES}, it needs local formatting.
-    # For now, assume main RESPONSE_FORMAT_TEMPLATE handles {TOOL_NAMES} from agent_context.
-
     final_prompt = base_prompt
-    # Conditionally add tool_section if the base_prompt does not already incorporate it via RESPONSE_FORMAT_TEMPLATE
-    # Most agent prompts now end with RESPONSE_FORMAT_TEMPLATE which itself includes {TOOL_NAMES}
-    # The TOOL_PROMPT_SECTION is more for general guidance and rules, which can be appended if not redundant.
-    # The current structure where specific prompts append RESPONSE_FORMAT_TEMPLATE is generally good.
-    # TOOL_PROMPT_SECTION provides detailed rules that might be useful to append if not covered.
-    # Let's check if the prompt already contains "AVAILABLE TOOLS" from TOOL_PROMPT_SECTION.
-    if "=== AVAILABLE TOOLS ===" not in final_prompt :
-        # And if it contains "RESPONSE REQUIREMENTS" from RESPONSE_FORMAT_TEMPLATE,
-        # then TOOL_PROMPT_SECTION should be inserted before RESPONSE_FORMAT_TEMPLATE
-        # This is complex. Simpler: If a prompt is supposed to use tools, it should have RESPONSE_FORMAT_TEMPLATE.
-        # And RESPONSE_FORMAT_TEMPLATE itself needs TOOL_NAMES.
-        # The TOOL_PROMPT_SECTION contains the descriptions and rules.
-        # Let's ensure that if a prompt ends with RESPONSE_FORMAT_TEMPLATE, that template has had TOOL_NAMES filled.
-        # This is already done by how RESPONSE_FORMAT_TEMPLATE is defined and used.
-        # The TOOL_PROMPT_SECTION is more about *how* to use tools, so it's generally good to include.
-        # This logic might need refinement based on how prompts are structured.
-        # For now, if a prompt is in AGENT_PROMPTS, it's assumed to be a primary agent that uses tools.
-        if agent_name in AGENT_PROMPTS and agent_name != "project_analyzer" and agent_name != "tech_negotiator": # these output direct JSON
-             final_prompt += "\n" + tool_section
+    # Append tool_section only if the base_prompt itself (via RESPONSE_FORMAT_TEMPLATE) doesn't already include it.
+    # The current structure is that RESPONSE_FORMAT_TEMPLATE is part of the main agent prompts.
+    # TOOL_PROMPT_SECTION is a separate block of rules.
+    # We should append TOOL_PROMPT_SECTION if the agent is expected to use tools,
+    # which is true for most agents except direct JSON output ones like project_analyzer.
+    # RESPONSE_FORMAT_TEMPLATE already includes {TOOL_NAMES}, so it's aware of tools.
+    # TOOL_PROMPT_SECTION provides the descriptions and rules.
 
-    # The example_workflow is illustrative and not part of the operational prompt to the LLM.
-    # final_prompt += "\n" + example_workflow
+    # Check if the prompt uses RESPONSE_FORMAT_TEMPLATE (which implies tool usage)
+    # and doesn't already contain the detailed tool descriptions.
+    if "=== RESPONSE REQUIREMENTS ===" in final_prompt and "=== AVAILABLE TOOLS ===" not in final_prompt :
+        # Insert tool_section before "=== RESPONSE REQUIREMENTS ===" if possible, or append
+        # For simplicity, appending if not already part of a more complex combined template.
+        # Most specific agent prompts now end with RESPONSE_FORMAT_TEMPLATE.
+        # The ideal place for TOOL_PROMPT_SECTION is often just before RESPONSE_FORMAT_TEMPLATE.
+        # However, since AGENT_ROLE_TEMPLATE, COMMON_CONTEXT_TEMPLATE etc. are concatenated,
+        # and then RESPONSE_FORMAT_TEMPLATE is added at the end of the specific agent prompt,
+        # we can append TOOL_PROMPT_SECTION before RESPONSE_FORMAT_TEMPLATE for those.
+        # This is already handled by the structure of web_dev_prompts which append TOOL_PROMPT_SECTION then RESPONSE_FORMAT_TEMPLATE
+        # For general prompts not following that specific structure:
+        if agent_name not in ["project_analyzer", "tech_negotiator", # Direct JSON output
+                               "page_structure_designer", "component_generator", "api_hook_writer",
+                               "form_handler", "state_manager", "style_engineer", "layout_designer",
+                               "error_boundary_writer", "test_writer"]: # These have it from web_dev_prompts
+             final_prompt += "\n" + tool_section
 
     return final_prompt
 
 def get_taskmaster_prompt(context):
     """Get prompt for TaskMaster coordinator, using UPPER_SNAKE_CASE."""
-    # Context keys passed to this function are lowercase as per original call sites.
-    # We map them to UPPER_SNAKE_CASE for .format()
     format_context = {
         'PROJECT_NAME': context.get('project_name', 'Unnamed Project'),
         'PROJECT_NAME_SLUG': context.get('project_name_slug', 'no-slug-provided'),
         'OBJECTIVE': context.get('objective', ''),
         'HISTORY': context.get('history', 'No history'),
-        'TOOL_NAMES': ", ".join(context.get('tool_names', [])) # tool_names is already a list of strings
+        'TOOL_NAMES': ", ".join(context.get('tool_names', []))
     }
     return TASKMASTER_PROMPT.format(**format_context)
 
@@ -1352,7 +1356,6 @@ def get_summarization_prompt(summary, thought_process):
 
 def get_evaluation_prompt(eval_type, context):
     """Get evaluation prompt, using UPPER_SNAKE_CASE."""
-    # Context keys are lowercase. Map to UPPER_SNAKE_CASE for .format()
     format_context = {
         'PROJECT_NAME': context.get('project_name', 'Unnamed Project'),
         'OBJECTIVE': context.get('objective', ''),
@@ -1365,3 +1368,5 @@ def get_evaluation_prompt(eval_type, context):
         format_context['ARCHITECTURE'] = context.get('architecture', '')
         return ARCHITECTURE_EVALUATION_PROMPT.format(**format_context)
     return "Error: Invalid evaluation type specified."
+
+[end of prompts/general_prompts.py]
