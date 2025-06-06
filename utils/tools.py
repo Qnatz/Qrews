@@ -476,15 +476,16 @@ class ToolKit:
             "reason": "No specific hybrid rule matched for this category. Suggesting combination or prioritization of top proposals."
         }
 
-    def lock_tech_stack(self, approved_stack_dict: Dict[str, Any], platform_requirements_dict: Dict[str, Any], agent_details: List[Dict[str, str]]) -> Dict[str, Any]:
+    def lock_tech_stack(self, approved_stack_dict: Dict[str, Any], platform_requirements_dict: Dict[str, bool], agent_details: List[Dict[str, str]], backend_needed: bool) -> Dict[str, Any]:
         """
         Simulates the process of locking the tech stack by consulting various agents
         (represented by agent_details) for validation.
         This tool itself performs a simplified, role-based validation.
+        Includes conditional check for web_backend based on backend_needed.
         """
         all_concerns = []
         overall_approval = True
-        self.logger.log(f"lock_tech_stack: Validating stack {approved_stack_dict} with agents: {[a.get('name') for a in agent_details]}", "ToolKit")
+        self.logger.log(f"lock_tech_stack: Validating stack {approved_stack_dict} with agents: {[a.get('name') for a in agent_details]}, backend_needed: {backend_needed}", "ToolKit")
 
         for agent_info in agent_details:
             agent_name = agent_info.get("name", "Unknown Agent")
@@ -512,12 +513,15 @@ class ToolKit:
                             current_agent_approved = False
                             concern_details.append(f"Proposed mobile_database '{mobile_db}' may be unsuitable for standalone mobile use by {agent_name}.")
 
-
-            # Simulate Architect validation logic (based on Agent.validate_stack base)
-            # Also includes generic checks that other agents might perform if they were a base Agent type.
-            if platform_requirements_dict.get("web") and not approved_stack_dict.get("web_backend"):
-                current_agent_approved = False
-                concern_details.append(f"Web platform required but no web_backend specified (concern for {agent_name}).")
+            # Conditional web_backend check
+            if platform_requirements_dict.get("web"):
+                if backend_needed:
+                    if not approved_stack_dict.get("web_backend"):
+                        current_agent_approved = False
+                        concern_details.append(f"Web platform requires a backend (backend_needed is True), but no web_backend specified (concern for {agent_name}).")
+                else:
+                    # Log that the check is skipped
+                    self.logger.log(f"lock_tech_stack: Web project, but backend_needed is False. Skipping web_backend validation for agent {agent_name} ({agent_role}).", "ToolKit")
 
             # Check for mobile_database again, as a general check if no mobile specialist was present,
             # or if the mobile specialist didn't veto but a generalist might still note its absence.
@@ -651,7 +655,8 @@ TOOL_DESCRIPTIONS = {
                 },
                 "platform_requirements_dict": {
                     "type": "object",
-                    "description": "The PlatformRequirements as a dictionary."
+                    "description": "The PlatformRequirements as a dictionary, e.g., {'web': true, 'ios': false}.",
+                    "additionalProperties": {"type": "boolean"}
                 },
                 "agent_details": {
                     "type": "array",
@@ -664,9 +669,13 @@ TOOL_DESCRIPTIONS = {
                         "required": ["name", "role"]
                     },
                     "description": "List of agent details (name, role) to simulate consultation for validation."
+                },
+                "backend_needed": {
+                    "type": "boolean",
+                    "description": "Indicates if a backend is explicitly needed for the project, based on project analysis. If true and project is web, a web_backend must be specified."
                 }
             },
-            "required": ["approved_stack_dict", "platform_requirements_dict", "agent_details"]
+            "required": ["approved_stack_dict", "platform_requirements_dict", "agent_details", "backend_needed"]
         }
     },
     "resolve_tech_conflict": {
