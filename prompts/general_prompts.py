@@ -108,6 +108,7 @@ Specific JSON content requirements:
                     - For any other type of 'web' or 'fullstack' project (e.g., 'a website with one page' that isn't explicitly described as static-only, or any site involving forms, dynamic data, user accounts, etc.), you MUST assume a backend is required.
             - For non-web project types, determine `backend_needed` and `suggested_tech_stack.backend` based on their specific requirements.
             - Be conservative with specific technology suggestions if unsure, but ensure the `backend` field is appropriately non-null if a backend is deemed necessary by the conditions above.)
+8. CRITICAL REMINDER: Your entire response MUST end with "Final Answer:" followed IMMEDIATELY by a single, valid JSON object as specified in "EXPECTED OUTPUT STRUCTURE". No other text should follow the JSON object. Ensure the JSON is complete and not truncated.
 
 {common_context}
 
