@@ -625,6 +625,28 @@ class ToolKit:
 
         return {"conflicts": conflicts_found, "warnings": warnings}
 
+    def human_approval(self, prompt_to_human: str) -> str:
+        """Requests human intervention to approve or reject a decision or result.
+        Prints the prompt_to_human to the console and awaits user input.
+        """
+        self.logger.log(f"Requesting human approval: {prompt_to_human}", "ToolKit")
+        print(f"\n🚨 AGENT REQUESTS HUMAN INTERVENTION 🚨")
+        print(f"--------------------------------------------------")
+        print(prompt_to_human)
+        print(f"--------------------------------------------------")
+
+        while True:
+            decision = input("Approve this? (yes/no/y/n): ")
+            decision_cleaned = decision.lower().strip()
+            if decision_cleaned in ["yes", "y"]:
+                self.logger.log("Human approved.", "ToolKit")
+                return "approved"
+            elif decision_cleaned in ["no", "n"]:
+                self.logger.log("Human rejected.", "ToolKit")
+                return "rejected"
+            else:
+                print("Invalid input. Please enter 'yes' or 'no'.")
+
 
 # Tool descriptions for agent prompts
 TOOL_DESCRIPTIONS = {
@@ -901,4 +923,18 @@ TOOL_DESCRIPTIONS = {
             }
         }
     },
+    "human_approval": {
+        "name": "human_approval",
+        "description": "Requests human intervention to approve or reject a decision, result, or course of action. Use this when automated processes fail, consensus is not reached, or explicit human oversight is required for a critical step. Clearly state what needs approval in the 'prompt_to_human'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "prompt_to_human": {
+                    "type": "string",
+                    "description": "The question or statement presented to the human for their decision (e.g., 'Tech council failed to agree on a database. The options are X and Y. Please approve one or suggest an alternative.')."
+                }
+            },
+            "required": ["prompt_to_human"]
+        }
+    }
 }
