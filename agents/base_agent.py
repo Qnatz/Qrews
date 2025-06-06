@@ -480,7 +480,7 @@ class Agent:
         self.logger.log(f"[{self.name}] Configured with {len(self.tools)} tools", self.role)
 
     def validate_stack(self, approved_stack: Dict[str, Any], platform_requirements: Dict[str, Any], backend_needed: bool) -> Dict[str, Any]:
-        self.logger.log(f"[{self.name}] Validating stack (base implementation): {approved_stack}. Backend needed: {backend_needed}", self.role)
+        self.logger.log(f"[{self.name}] Validating stack (base implementation): {approved_stack}, Platform Req: {platform_requirements}, Backend Needed: {backend_needed}", self.role)
 
         if platform_requirements.get("web"):
             if backend_needed:
@@ -489,7 +489,7 @@ class Agent:
                     self.logger.log(concern_msg, self.role, level="WARNING")
                     return {"approved": False, "concerns": concern_msg}
             else:
-                self.logger.log(f"[{self.name}] ({self.role}): Web platform, but backend_needed is False. Skipping web_backend validation.", self.role)
+                self.logger.log(f"[{self.name}] ({self.role}): Web platform detected, but backend_needed is False. Skipping web_backend validation.", self.role)
 
         is_mobile_project = platform_requirements.get("ios") or platform_requirements.get("android")
         if is_mobile_project and not approved_stack.get("mobile_database"):
