@@ -510,8 +510,6 @@ FINAL API SPECS:
 }}
 ```
 """
-# Note: The "FINAL IMPLEMENTATION" part was removed as API Designer's primary role is spec design.
-# Code Writer agent will handle implementation based on this spec.
 
 CODE_WRITER_PROMPT = AGENT_ROLE_TEMPLATE + """
 Your task: Generate production-quality code in small, testable units.
@@ -1067,6 +1065,12 @@ Final Answer: Auth tests executed, one failure detected
 """
 }
 
+# Import specialized prompt dictionaries
+from prompts.web_dev_prompts import WEB_DEV_AGENT_PROMPTS
+from prompts.backend_dev_prompts import BACKEND_DEV_AGENT_PROMPTS
+from prompts.mobile_crew_internal_prompts import PROMPT_TEMPLATES as MOBILE_DEV_AGENT_PROMPTS
+
+
 # Agent prompt mapping
 AGENT_PROMPTS = {
     "project_analyzer": PROJECT_ANALYZER_PROMPT,
@@ -1074,12 +1078,18 @@ AGENT_PROMPTS = {
     "architect": ARCHITECT_PROMPT,
     "api_designer": API_DESIGNER_PROMPT,
     "code_writer": CODE_WRITER_PROMPT,
-    "web_developer": WEB_DEVELOPER_PROMPT, # RENAMED from frontend_builder
-    "mobile_developer": MOBILE_DEVELOPER_PROMPT,
+    "web_developer": WEB_DEVELOPER_PROMPT,
+    "mobile_developer": MOBILE_DEVELOPER_PROMPT, # This is a general role, specific mobile sub-agents have their own prompts
     "tester": TESTER_PROMPT,
     "debugger": DEBUGGER_PROMPT,
-    "tech_negotiator": TECH_NEGOTIATOR_PROMPT, # Added new negotiator
+    "tech_negotiator": TECH_NEGOTIATOR_PROMPT,
 }
+
+# Merge specialized prompts
+AGENT_PROMPTS.update(WEB_DEV_AGENT_PROMPTS)
+AGENT_PROMPTS.update(BACKEND_DEV_AGENT_PROMPTS)
+AGENT_PROMPTS.update(MOBILE_DEV_AGENT_PROMPTS)
+
 
 # ============== HELPER FUNCTIONS ==============
 def get_agent_prompt(agent_name, context):
@@ -1091,22 +1101,22 @@ def get_agent_prompt(agent_name, context):
         'project_name': context.get('project_name', 'Unnamed Project'),
         'objective': context.get('objective', ''),
         'project_type': context.get('project_type', 'fullstack'),
-        'tech_stack_frontend_name': context.get('tech_stack_frontend_name', 'Not Specified'), # For display in Architect prompt for e.g.
-        'tech_stack_backend_name': context.get('tech_stack_backend_name', 'Not Specified'),   # For display in Architect prompt for e.g.
-        'tech_stack_database_name': context.get('tech_stack_database_name', 'Not Specified'), # For display in Architect prompt for e.g.
-        'tech_stack_frontend': context.get('tech_stack_frontend', 'not specified'), # Actual tech stack value
-        'tech_stack_backend': context.get('tech_stack_backend', 'not specified'),   # Actual tech stack value
-        'tech_stack_database': context.get('tech_stack_database', 'not specified'), # Actual tech stack value
+        'tech_stack_frontend_name': context.get('tech_stack_frontend_name', 'Not Specified'),
+        'tech_stack_backend_name': context.get('tech_stack_backend_name', 'Not Specified'),
+        'tech_stack_database_name': context.get('tech_stack_database_name', 'Not Specified'),
+        'tech_stack_frontend': context.get('tech_stack_frontend', 'not specified'),
+        'tech_stack_backend': context.get('tech_stack_backend', 'not specified'),
+        'tech_stack_database': context.get('tech_stack_database', 'not specified'),
         'current_dir': context.get('current_dir', '/project'),
         'project_summary': context.get('project_summary', 'No summary available'),
         'architecture': context.get('architecture', 'No architecture defined'),
         'analysis': context.get('analysis', {}),
         'plan': context.get('plan', 'No plan available'),
         'memories': context.get('memories', 'No memories'),
-        'tool_names': context.get('tool_names', 'No tools available'),
-        'framework': context.get('framework', 'Python'),
-        'ui_framework': context.get('ui_framework', 'React'),
-        'mobile_framework': context.get('mobile_framework', 'React Native'),
+        'tool_names': ", ".join([tool['name'] for tool in context.get('tools', []) if 'name' in tool]), # Ensure tool_names is a string
+        'framework': context.get('framework', 'Python'), # Example, may not be used by all
+        'ui_framework': context.get('ui_framework', 'React'), # Example
+        'mobile_framework': context.get('mobile_framework', 'React Native'), # Example
         'design_system': context.get('design_system', 'No design system'),
         'component_summary': context.get('component_summary', 'No components documented'),
         'api_endpoints': context.get('api_endpoints', 'No API docs'),
@@ -1115,211 +1125,138 @@ def get_agent_prompt(agent_name, context):
         'navigation': context.get('navigation', 'Stack navigation'),
         'platform_specifics': context.get('platform_specifics', 'iOS and Android requirements'),
         'error_report': context.get('error_report', 'No error details provided'),
+        'response_format_expectation': context.get('response_format_expectation', "Your response MUST be in JSON format."), # Default for RESPONSE_FORMAT_TEMPLATE
     }
 
-    # Create common_context first, so it's available for the debug block if needed
-    # MODIFICATION START: Conditional common_context population
+    # Populate common_context based on agent_name
     if agent_name == "project_analyzer":
-        agent_context['common_context'] = json.dumps({
+        common_context_data = {
             "frontend": agent_context.get('tech_stack_frontend'),
             "backend": agent_context.get('tech_stack_backend'),
             "database": agent_context.get('tech_stack_database')
-        }, indent=4)
-        # Assuming logger is not directly available, use print for debugging this part from prompts.py
-        print(f"DEBUG_PROMPTS: project_analyzer - Incoming context for get_agent_prompt (first 500 chars): {str(context)[:500]}")
-        print(f"DEBUG_PROMPTS: project_analyzer - Populated common_context with JSON for project_analyzer.")
-    else: # This else belongs to: if agent_name == "project_analyzer" (for common_context population)
-        agent_context['common_context'] = COMMON_CONTEXT_TEMPLATE.format(
-            current_dir=agent_context['current_dir'],
-            project_summary=agent_context['project_summary'],
-            architecture=agent_context['architecture'],
-            plan=agent_context['plan'],
-            memories=agent_context['memories']
-        )
-    # MODIFICATION END
-
-    if agent_name == "project_analyzer": # This existing debug block is fine to keep
+        }
         try:
-            # Assuming logger is not directly available, use print for debugging this part from prompts.py
-            print(f"DEBUG_PROMPTS: project_analyzer - Incoming context for get_agent_prompt (first 500 chars): {str(context)[:500]}")
-            print(f"DEBUG_PROMPTS: project_analyzer - Constructed agent_context (first 500 chars): {str(agent_context)[:500]}")
-        except Exception as e_log:
-            print(f"DEBUG_PROMPTS: project_analyzer - Error logging contexts: {e_log}")
-
-        # Test formatting with individual keys used by PROJECT_ANALYZER_PROMPT and its components
-        # AGENT_ROLE_TEMPLATE uses: role, specialty, project_name, objective, project_type
-        # COMMON_CONTEXT_TEMPLATE (for project_analyzer, this is now the JSON string)
-        # PROJECT_ANALYZER_PROMPT itself uses: common_context
-        # We will test the atomic keys that go into these templates.
-        # For project_analyzer, common_context is now a string, so we don't test its sub-keys like 'current_dir' here.
-        keys_to_test_individually = ['role', 'specialty', 'project_name', 'objective', 'project_type', 'common_context']
-
-        for key_to_test in keys_to_test_individually:
-            if key_to_test in agent_context:
-                try:
-                    print(f"DEBUG_PROMPTS: project_analyzer - Testing format with key: '{{{key_to_test}}}'")
-                    # Create a minimal template string for this key
-                    minimal_template = f"{{{key_to_test}}}"
-                    # Attempt to format it
-                    formatted_value = minimal_template.format(**agent_context) # Use the full agent_context for the test
-                    print(f"DEBUG_PROMPTS: project_analyzer - Key '{{{key_to_test}}}' formatted successfully. Value (first 100 chars): {repr(formatted_value)[:100]}")
-                except Exception as e_key_format:
-                    # This is the critical log if a specific key's value is problematic during formatting
-                    print(f"DEBUG_PROMPTS: project_analyzer - ERROR formatting with key '{{{key_to_test}}}'. Error: {e_key_format}")
-                    # Also print the problematic value directly from agent_context
-                    print(f"DEBUG_PROMPTS: project_analyzer - Problematic value for key '{{{key_to_test}}}' was: {repr(agent_context.get(key_to_test))}")
-            else:
-                print(f"DEBUG_PROMPTS: project_analyzer - Key '{{{key_to_test}}}' not found in agent_context for individual test.")
-
-        # After individual key tests, you can proceed with the original formatting attempt for the full prompt,
-        # or add a specific try-except around it if the individual tests don't reveal the issue.
-
+            agent_context['common_context'] = json.dumps(common_context_data, indent=2)
+        except TypeError:
+            agent_context['common_context'] = str(common_context_data) # Fallback
+    else:
+        common_context_data = {
+            'current_dir': agent_context['current_dir'],
+            'project_summary': agent_context['project_summary'],
+            'architecture': agent_context['architecture'],
+            'plan': agent_context['plan'],
+            'memories': agent_context['memories']
+        }
+        # For non-project_analyzer, format COMMON_CONTEXT_TEMPLATE if its placeholders are simple strings
+        # If architecture or plan are dicts, this direct formatting might fail.
+        # They should ideally be string summaries or JSON strings already.
         try:
-            # Assuming logger is not available, use print for debugging.
-            print(f"DEBUG_PROMPTS: project_analyzer - About to format. Agent context keys: {list(agent_context.keys())}")
-            actual_template_string_to_format = AGENT_PROMPTS[agent_name]
-            print(f"DEBUG_PROMPTS: project_analyzer - Actual template string (first 500 chars): {repr(actual_template_string_to_format)[:500]}")
-        except Exception as e_log_template:
-            print(f"DEBUG_PROMPTS: project_analyzer - Error logging template string: {e_log_template}")
+            # Ensure complex fields are stringified if they are dicts/lists
+            architecture_str = common_context_data['architecture']
+            if isinstance(architecture_str, dict): architecture_str = json.dumps(architecture_str, indent=2, default=str)
+            plan_str = common_context_data['plan']
+            if isinstance(plan_str, dict): plan_str = json.dumps(plan_str, indent=2, default=str)
 
-        print(f"DEBUG_PROMPTS: project_analyzer - Proceeding to format the full AGENT_PROMPTS[agent_name].")
+            agent_context['common_context'] = COMMON_CONTEXT_TEMPLATE.format(
+                current_dir=common_context_data['current_dir'],
+                project_summary=common_context_data['project_summary'],
+                architecture=architecture_str,
+                plan=plan_str,
+                memories=common_context_data['memories']
+            )
+        except KeyError as ke:
+            agent_context['common_context'] = f"Error formatting common context: Missing key {str(ke)}"
+        except TypeError as te: # Handle cases where architecture/plan might not be strings/dicts
+             agent_context['common_context'] = f"Error formatting common context due to type: {str(te)}"
 
-    # === MODIFICATION FOR TECH_NEGOTIATOR START ===
+
+    # Agent-specific context modifications
     if agent_name == "tech_negotiator":
-        agent_context['key_requirements'] = "\n".join(context.get("analysis", {}).get("key_requirements", []))
-        # Ensure tech_stack values are sourced directly from the main context if they weren't already part of the initial agent_context defaults
-        # or if they need to be specifically what's passed at the top-level 'context' for tech_negotiator.
-        agent_context['tech_stack_frontend'] = context.get('tech_stack_frontend', agent_context.get('tech_stack_frontend', 'not specified'))
-        agent_context['tech_stack_backend'] = context.get('tech_stack_backend', agent_context.get('tech_stack_backend', 'not specified'))
-        agent_context['tech_stack_database'] = context.get('tech_stack_database', agent_context.get('tech_stack_database', 'not specified'))
-    # === MODIFICATION FOR TECH_NEGOTIATOR END ===
+        analysis_val = agent_context.get("analysis", {})
+        key_req_list = analysis_val.get("key_requirements", []) if isinstance(analysis_val, dict) else []
+        agent_context['key_requirements'] = "\n".join(key_req_list)
 
-    # === MODIFICATION FOR API_DESIGNER START ===
     if agent_name == "api_designer":
-        agent_context['project_description'] = context.get('project_description', 'No project description provided. Please ensure this is set in the context.')
+        agent_context['project_description'] = agent_context.get('objective', 'No project description provided.') # Use objective if no specific description
+        analysis_data = agent_context.get("analysis", {})
+        key_requirements = analysis_data.get("key_requirements", []) if isinstance(analysis_data, dict) else []
+        agent_context['analysis_summary_for_api_design'] = "\n".join([f"- {req}" for req in key_requirements]) if key_requirements else "Key requirements not available."
 
-        analysis_data = context.get("analysis", {})
-        key_requirements = analysis_data.get("key_requirements", [])
-        if isinstance(key_requirements, list) and key_requirements:
-            agent_context['analysis_summary_for_api_design'] = "\n".join([f"- {req}" for req in key_requirements])
+        arch_data = agent_context.get('architecture', {})
+        arch_desc = arch_data.get('description', str(arch_data)) if isinstance(arch_data, dict) else str(arch_data)
+        agent_context['architecture_summary_for_api_design'] = arch_desc[:500] + ("..." if len(arch_desc) > 500 else "")
+
+        plan_data = agent_context.get('plan', {})
+        plan_milestones = plan_data.get('milestones') if isinstance(plan_data, dict) else []
+        if plan_milestones and isinstance(plan_milestones, list):
+            plan_summary_list = [f"Milestone {i+1}: {ms.get('name', 'N/A')}" for i, ms in enumerate(plan_milestones) if isinstance(ms, dict)]
+            plan_str = "\n".join(plan_summary_list)
         else:
-            agent_context['analysis_summary_for_api_design'] = "Key requirements not available or not in expected format."
+            plan_str = str(plan_data)
+        agent_context['plan_summary_for_api_design'] = plan_str[:500] + ("..." if len(plan_str) > 500 else "")
 
-        architecture_data = context.get('architecture', {})
-        if isinstance(architecture_data, dict) and architecture_data:
-             # Attempt to get a description or just summarize the whole dict
-            arch_desc = architecture_data.get('description', str(architecture_data))
-            agent_context['architecture_summary_for_api_design'] = arch_desc[:500] + ("..." if len(arch_desc) > 500 else "")
-        elif isinstance(architecture_data, str) and architecture_data: # If it's already a string
-            agent_context['architecture_summary_for_api_design'] = architecture_data[:500] + ("..." if len(architecture_data) > 500 else "")
-        else:
-            agent_context['architecture_summary_for_api_design'] = "Architectural details not available."
-
-        plan_data = context.get('plan', {})
-        if isinstance(plan_data, dict) and plan_data:
-            # Attempt to get milestones or just summarize the whole dict
-            plan_milestones = plan_data.get('milestones')
-            if plan_milestones and isinstance(plan_milestones, list):
-                plan_summary = []
-                for i, milestone in enumerate(plan_milestones):
-                    if isinstance(milestone, dict) and milestone.get('name'):
-                        plan_summary.append(f"Milestone {i+1}: {milestone.get('name')}")
-                        if milestone.get('description'):
-                             plan_summary.append(f"  Description: {milestone.get('description')}")
-                    else:
-                        plan_summary.append(f"Milestone {i+1}: (Details missing)")
-                plan_str = "\n".join(plan_summary)
-            else: # Not a list of milestones or milestones is empty
-                plan_str = str(plan_data) # Fallback to string representation of the plan dict
-            agent_context['plan_summary_for_api_design'] = plan_str[:500] + ("..." if len(plan_str) > 500 else "")
-        elif isinstance(plan_data, str) and plan_data: # If it's already a string
-            agent_context['plan_summary_for_api_design'] = plan_data[:500] + ("..." if len(plan_data) > 500 else "")
-        else:
-            agent_context['plan_summary_for_api_design'] = "Plan details not available."
-    # === MODIFICATION FOR API_DESIGNER END ===
-
-    # === MODIFICATION FOR ARCHITECT START ===
     if agent_name == "architect":
-        # Populate relevant_tech_stack_list
         tech_stack_lines = []
-        project_type = context.get('project_type', 'fullstack') # Default to fullstack if not specified
+        project_type_val = agent_context.get('project_type', 'fullstack')
+        if agent_context.get('tech_stack_frontend_name') != 'Not Specified' and project_type_val in ['fullstack', 'web', 'mobile']: tech_stack_lines.append(f"- Frontend: {agent_context['tech_stack_frontend_name']}")
+        if agent_context.get('tech_stack_backend_name') != 'Not Specified' and project_type_val in ['fullstack', 'web', 'mobile', 'backend']: tech_stack_lines.append(f"- Backend: {agent_context['tech_stack_backend_name']}")
+        if agent_context.get('tech_stack_database_name') != 'Not Specified' and project_type_val in ['fullstack', 'web', 'mobile', 'backend']: tech_stack_lines.append(f"- Database: {agent_context['tech_stack_database_name']}")
+        agent_context['relevant_tech_stack_list'] = "\n".join(tech_stack_lines) if tech_stack_lines else "(No specific core technologies defined)"
 
-        # Frontend
-        # In agent_context, tech_stack_frontend_name is the display name, tech_stack_frontend is the actual value
-        # The prompt uses tech_stack_frontend_name for the preamble list.
-        fe_name = agent_context.get('tech_stack_frontend_name', 'Not Specified')
-        if fe_name and fe_name != 'Not Specified':
-            if project_type in ['fullstack', 'web', 'mobile']:
-                 tech_stack_lines.append(f"- Frontend: {fe_name}")
+        analysis_data = agent_context.get("analysis", {})
+        agent_context['analysis_summary_for_architecture'] = f"Project Type: {analysis_data.get('project_type_confirmed', 'N/A')}"
+        key_requirements = analysis_data.get("key_requirements", []) if isinstance(analysis_data, dict) else []
+        agent_context['key_requirements_for_architecture'] = "\n".join([f"- {req}" for req in key_requirements]) if key_requirements else "Key requirements not available."
 
-        # Backend
-        be_name = agent_context.get('tech_stack_backend_name', 'Not Specified')
-        if be_name and be_name != 'Not Specified':
-            if project_type in ['fullstack', 'web', 'mobile', 'backend']:
-                tech_stack_lines.append(f"- Backend: {be_name}")
-
-        # Database
-        db_name = agent_context.get('tech_stack_database_name', 'Not Specified')
-        if db_name and db_name != 'Not Specified':
-            if project_type in ['fullstack', 'web', 'mobile', 'backend']: # Mobile might have a backend DB
-                tech_stack_lines.append(f"- Database: {db_name}")
-
-        if not tech_stack_lines:
-            agent_context['relevant_tech_stack_list'] = "  (No specific core technologies defined for the project type)"
-        else:
-            agent_context['relevant_tech_stack_list'] = "\n".join(tech_stack_lines)
-
-        # Populate analysis_summary_for_architecture
-        analysis_data = context.get("analysis", {})
-        confirmed_project_type = analysis_data.get('project_type_confirmed', 'N/A')
-        agent_context['analysis_summary_for_architecture'] = f"Project Type: {confirmed_project_type}. Key Focus: Guiding architecture based on requirements."
-
-        # Populate key_requirements_for_architecture
-        key_requirements = analysis_data.get("key_requirements", [])
-        if isinstance(key_requirements, list) and key_requirements:
-            agent_context['key_requirements_for_architecture'] = "\n".join([f"- {req}" for req in key_requirements])
-        else:
-            agent_context['key_requirements_for_architecture'] = "Key requirements not available or not in expected format."
-
-    # === MODIFICATION FOR ARCHITECT END ===
-
-    # === MODIFICATION FOR CODE_WRITER START ===
     if agent_name == "code_writer":
-        project_directory_structure = "Project directory structure not yet defined or available in architecture output."
-        if context.get('architecture') and \
-           isinstance(context['architecture'], dict) and \
-           context['architecture'].get('architecture_design') and \
-           isinstance(context['architecture']['architecture_design'], dict) and \
-           context['architecture']['architecture_design'].get('diagram'):
-            project_directory_structure = context['architecture']['architecture_design']['diagram']
+        arch_data = agent_context.get('architecture', {})
+        diagram = arch_data.get('architecture_design', {}).get('diagram', "Project directory structure not defined.") if isinstance(arch_data, dict) and isinstance(arch_data.get('architecture_design'), dict) else "Project directory structure not defined."
+        agent_context['project_directory_structure'] = diagram
 
-        agent_context['project_directory_structure'] = project_directory_structure
-    # === MODIFICATION FOR CODE_WRITER END ===
-    
-    # Get base prompt for this agent
-    # common_context is now correctly populated based on agent_name before this line.
-    base_prompt = AGENT_PROMPTS[agent_name].format(**agent_context)
+    # Get base prompt for this agent, ensure all required keys for the base prompt are present
+    base_template_str = AGENT_PROMPTS.get(agent_name)
+    if not base_template_str:
+        # Fallback for mobile sub-agents that might not be in AGENT_PROMPTS directly yet
+        # This part will be more robust once mobile prompts are fully integrated
+        from prompts.mobile_crew_internal_prompts import get_crew_internal_prompt as get_mobile_prompt
+        try:
+            return get_mobile_prompt(agent_name, context) # Pass original context
+        except ValueError: # If not found in mobile prompts either
+             raise ValueError(f"No prompt template found for agent: {agent_name} in general or mobile specific prompts.")
 
-    # Add tool section
+    base_prompt = base_template_str.format(**agent_context)
+
     tool_descriptions = "\n".join(
         f"- {tool['name']}: {tool['description']}"
-        for tool in context.get('tools', [])
+        for tool in context.get('tools', []) if isinstance(tool, dict) and 'name' in tool and 'description' in tool
     )
 
-    # Add ctags specialization if available
     ctags_specific = ""
-    if any(t['name'].startswith('ctags') for t in context.get('tools', [])):
+    if any(isinstance(t, dict) and t.get('name', '').startswith('ctags') for t in context.get('tools', [])):
         ctags_specific = "\n=== CTAGS SPECIALIZATION ===\nPrefer ctags for symbol navigation over text search"
 
-    tool_section = TOOL_PROMPT_SECTION.format(
+    tool_section_formatted = TOOL_PROMPT_SECTION.format(
         tool_descriptions=tool_descriptions,
         ctags_tips=NAVIGATION_TIPS + ctags_specific
     )
 
-    # Add example workflow
-    example_workflow = EXAMPLE_WORKFLOWS.get(agent_name, "")
+    example_workflow_str = EXAMPLE_WORKFLOWS.get(agent_name, "") # This is fine as a simple string addition
 
-    return base_prompt + tool_section + "\n" + example_workflow
+    final_prompt = base_prompt
+    if "{TOOL_PROMPT_SECTION}" in base_prompt: # Some prompts (like ProjectAnalyzer) might not use it
+        final_prompt = final_prompt.replace("{TOOL_PROMPT_SECTION}", tool_section_formatted)
+    elif "{tool_descriptions}" in base_prompt: # Some older prompts might have this directly
+         final_prompt = final_prompt.replace("{tool_descriptions}", tool_descriptions)
+         final_prompt = final_prompt.replace("{ctags_tips}", NAVIGATION_TIPS + ctags_specific)
+
+
+    # Append example workflow if the placeholder exists in the (now combined) final_prompt
+    # This check is a bit difficult as RESPONSE_FORMAT_TEMPLATE is often at the end.
+    # For now, let's assume example_workflow is generally applicable or handled by specific prompt structures.
+    # A more robust way would be to have a specific placeholder for example_workflow in templates that need it.
+
+    return final_prompt
+
 
 def get_taskmaster_prompt(context):
     """Get prompt for TaskMaster coordinator"""
