@@ -479,17 +479,24 @@ class Agent:
         self.tools = tool_kit.get_tool_definitions() if tool_kit else []
         self.logger.log(f"[{self.name}] Configured with {len(self.tools)} tools", self.role)
 
-    def validate_stack(self, approved_stack: Dict[str, Any], platform_requirements: Dict[str, Any]) -> Dict[str, Any]:
-        self.logger.log(f"[{self.name}] Validating stack (base implementation): {approved_stack}", self.role)
-        if platform_requirements.get("web") and not approved_stack.get("web_backend"):
-            concern_msg = f"{self.name} ({self.role}): Web platform required but no web_backend specified."
-            self.logger.log(concern_msg, self.role, level="WARNING")
-            return {"approved": False, "concerns": concern_msg}
+    def validate_stack(self, approved_stack: Dict[str, Any], platform_requirements: Dict[str, Any], backend_needed: bool) -> Dict[str, Any]:
+        self.logger.log(f"[{self.name}] Validating stack (base implementation): {approved_stack}. Backend needed: {backend_needed}", self.role)
+
+        if platform_requirements.get("web"):
+            if backend_needed:
+                if not approved_stack.get("web_backend"):
+                    concern_msg = f"{self.name} ({self.role}): Web platform requires a web_backend (since backend_needed is True)."
+                    self.logger.log(concern_msg, self.role, level="WARNING")
+                    return {"approved": False, "concerns": concern_msg}
+            else:
+                self.logger.log(f"[{self.name}] ({self.role}): Web platform, but backend_needed is False. Skipping web_backend validation.", self.role)
+
         is_mobile_project = platform_requirements.get("ios") or platform_requirements.get("android")
         if is_mobile_project and not approved_stack.get("mobile_database"):
-            concern_msg = f"{self.name} ({self.role}): Mobile platform required but no mobile_database specified."
+            concern_msg = f"{self.name} ({self.role}): Mobile platform requires a mobile_database specified." # Corrected message
             self.logger.log(concern_msg, self.role, level="WARNING")
             return {"approved": False, "concerns": concern_msg}
+
         return {"approved": True, "concerns": None}
 
 def _process_tech_proposals(logger: Logger, agent_name: str, agent_role: str, raw_proposals_dict: Optional[Dict[str, Any]], project_context: ProjectContext):
@@ -914,35 +921,60 @@ class FrontendBuilder(Agent):
 class MobileDeveloper(Agent):
     def __init__(self, logger, db: Database = None):
         super().__init__('mobile_developer', 'Mobile Developer', logger, db=db)
-    def validate_stack(self, approved_stack: Dict[str, Any], platform_requirements: Dict[str, Any]) -> Dict[str, Any]:
-        self.logger.log(f"[{self.name}] Validating stack with mobile specialization: {approved_stack}", self.role)
+    def validate_stack(self, approved_stack: Dict[str, Any], platform_requirements: Dict[str, Any], backend_needed: bool) -> Dict[str, Any]:
+        self.logger.log(f"[{self.name}] Validating stack with mobile specialization: {approved_stack}. Backend needed: {backend_needed}", self.role)
+
+        current_agent_approved = True  # Approval status for MobileDeveloper's specific checks
+        current_agent_concerns_list = [] # List for MobileDeveloper's specific concerns
+
         is_mobile_project = platform_requirements.get("ios") or platform_requirements.get("android")
         if is_mobile_project:
             mobile_db = approved_stack.get("mobile_database")
             if not mobile_db:
-                concern_msg = f"{self.name} ({self.role}): Mobile platform required but no mobile_database specified."
-                self.logger.log(concern_msg, self.role, level="WARNING"); return {"approved": False, "concerns": concern_msg}
-            unsuitable_standalone_mobile_dbs = ["elasticsearch", "dynamodb"]
-            if mobile_db and any(unsuitable_db in mobile_db.lower() for unsuitable_db in unsuitable_standalone_mobile_dbs):
-                if "firestore" not in mobile_db.lower() and "sqlite" not in mobile_db.lower() and "roomdb" not in mobile_db.lower() and "realm" not in mobile_db.lower():
-                    concern_msg = f"{self.name} ({self.role}): Proposed mobile_database '{mobile_db}' seems unsuitable for standalone mobile use. Consider a mobile-first DB or a clear hybrid pattern."
-                    self.logger.log(concern_msg, self.role, level="WARNING")
-        is_approved = True; concerns = []
-        mobile_db = approved_stack.get("mobile_database")
-        is_android_project = platform_requirements.get("android", False)
-        if mobile_db:
-            mobile_db_lower = mobile_db.lower()
-            if "realm" in mobile_db_lower and is_android_project:
-                concerns.append("Realm selected for mobile_database on Android. Ensure justification in decision_rationale is robust, detailing specific needs (e.g., complex data, existing Realm codebase) versus Room's typical advantages for Kotlin/Jetpack.")
-            cloud_only_keywords = ["dynamodb", "cassandra", "cosmosdb"]; local_sync_keywords = ["sqlite", "room", "realm", "cache", "sync", "offline", "local", "embedded"]
-            is_cloud_only_db = any(keyword in mobile_db_lower for keyword in cloud_only_keywords)
-            has_local_strategy = any(keyword in mobile_db_lower for keyword in local_sync_keywords)
-            if is_cloud_only_db and not has_local_strategy:
-                is_approved = False; concerns.append(f"Mobile database '{mobile_db}' appears unsuitable for direct mobile use without an explicitly stated local persistence/synchronization strategy. Please clarify or revise.")
-        super_result = super().validate_stack(approved_stack, platform_requirements)
-        if not super_result.get("approved", True): is_approved = False
-        if super_result.get("concerns"): concerns.append(super_result["concerns"])
-        return {"approved": is_approved, "concerns": " | ".join(concerns) if concerns else None}
+                current_agent_approved = False
+                current_agent_concerns_list.append(f"{self.name} ({self.role}): Mobile platform required but no mobile_database specified.")
+            else: # Only proceed with further mobile_db checks if one is specified
+                unsuitable_standalone_mobile_dbs = ["elasticsearch", "dynamodb"]
+                if any(unsuitable_db in mobile_db.lower() for unsuitable_db in unsuitable_standalone_mobile_dbs):
+                    if not any(hybrid_indicator in mobile_db.lower() for hybrid_indicator in ["firestore", "sqlite", "roomdb", "realm"]):
+                        # This was a log before, making it a concern that can be reviewed, but not necessarily blocking by default.
+                        # To make it blocking, set current_agent_approved = False here.
+                        # For now, let's add it as a non-blocking warning/concern as per original behavior of just logging.
+                        # However, the problem description implies this should be a real concern if it makes the stack unsuitable.
+                        # Let's assume if it's unsuitable, it should make current_agent_approved = False
+                        current_agent_approved = False
+                        current_agent_concerns_list.append(f"{self.name} ({self.role}): Proposed mobile_database '{mobile_db}' seems unsuitable for standalone mobile use without a clear hybrid strategy (e.g., involving Firestore, SQLite, RoomDB, Realm). Consider a mobile-first DB or a clear hybrid pattern.")
+
+                is_android_project = platform_requirements.get("android", False)
+                if "realm" in mobile_db.lower() and is_android_project:
+                    current_agent_concerns_list.append("Realm selected for mobile_database on Android. Ensure justification in decision_rationale is robust, detailing specific needs (e.g., complex data, existing Realm codebase) versus Room's typical advantages for Kotlin/Jetpack.")
+
+                cloud_only_keywords = ["dynamodb", "cassandra", "cosmosdb"]
+                local_sync_keywords = ["sqlite", "room", "realm", "cache", "sync", "offline", "local", "embedded"]
+                is_cloud_only_db = any(keyword in mobile_db.lower() for keyword in cloud_only_keywords)
+                has_local_strategy = any(keyword in mobile_db.lower() for keyword in local_sync_keywords)
+
+                if is_cloud_only_db and not has_local_strategy:
+                    current_agent_approved = False
+                    current_agent_concerns_list.append(f"Mobile database '{mobile_db}' appears unsuitable for direct mobile use without an explicitly stated local persistence/synchronization strategy. Please clarify or revise.")
+
+        # Call super().validate_stack() with all required arguments, including backend_needed
+        super_result = super().validate_stack(approved_stack, platform_requirements, backend_needed)
+
+        final_approval_status = current_agent_approved
+        if not super_result.get("approved", True):
+            final_approval_status = False # If super call failed, this override also fails
+
+        final_concerns_list = current_agent_concerns_list
+        if super_result.get("concerns"):
+            # Ensure super_result["concerns"] is treated as a single string concern or list of concerns
+            if isinstance(super_result["concerns"], str):
+                final_concerns_list.append(super_result["concerns"])
+            elif isinstance(super_result["concerns"], list): # Though base currently returns string or None
+                final_concerns_list.extend(super_result["concerns"])
+
+        return {"approved": final_approval_status, "concerns": " | ".join(final_concerns_list) if final_concerns_list else None}
+
     def _parse_response(self, text: str, project_context: ProjectContext) -> dict:
         base_parsed_output = super()._parse_response(text, project_context)
         if base_parsed_output["status"] == "error" and not base_parsed_output["raw_response"]: return base_parsed_output
