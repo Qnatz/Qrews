@@ -100,7 +100,14 @@ Specific JSON content requirements:
    - frontend_needed (boolean)
    - mobile_needed (boolean)
    - key_requirements (list of strings, representing technical requirements)
-   - suggested_tech_stack (object: an object with '{{frontend}}', '{{backend}}', and '{{database}}' string keys. Each key should hold a string proposing a specific technology (e.g., "React", "Node.js/Express", "PostgreSQL") or be `null` if that component is not applicable or needed for the project. For example, for a simple static HTML/CSS/JS website, it might be `{{{{\"frontend\": \"HTML/CSS/JavaScript\", \"backend\": null, \"database\": null}}}}`. Be conservative with suggestions.)
+   - suggested_tech_stack (object: an object with 'frontend', 'backend', and 'database' string keys. Each key should hold a string proposing a specific technology or be `null` if not applicable.
+            - **Specific conditions for 'web' or 'fullstack' projects:**
+                - If `project_type_confirmed` is 'web' or 'fullstack':
+                    - `backend_needed` MUST usually be `true`, and `suggested_tech_stack.backend` MUST propose a relevant backend technology (e.g., "Node.js/Express", "Python/Django").
+                    - An exception is if the project objective EXPLICITLY and CLEARLY describes a 'single static HTML page with no server interaction', 'client-side only application with no data persistence needs', or a similar very simple static scenario. In such EXPLICIT static cases ONLY, `backend_needed` can be `false` and `suggested_tech_stack.backend` can be `null`.
+                    - For any other type of 'web' or 'fullstack' project (e.g., 'a website with one page' that isn't explicitly described as static-only, or any site involving forms, dynamic data, user accounts, etc.), you MUST assume a backend is required.
+            - For non-web project types, determine `backend_needed` and `suggested_tech_stack.backend` based on their specific requirements.
+            - Be conservative with specific technology suggestions if unsure, but ensure the `backend` field is appropriately non-null if a backend is deemed necessary by the conditions above.)
 
 {common_context}
 
@@ -863,6 +870,7 @@ You are part of the AI agent crew responsible for **negotiating and finalizing t
    - Justification
    - Confidence score (0.0 - 1.0)
    - Effort estimate: "low", "medium", or "high"
+5. **Critical Backend Check for Web Projects**: Review the `analysis.project_type_confirmed` and `analysis.backend_needed` fields from the input context. If `analysis.project_type_confirmed` is 'web' or 'fullstack' AND `analysis.backend_needed` is `true`, your collective proposals in the 'Final Answer:' MUST include at least one concrete technology proposal for the 'backend' category. If the initial `suggested_tech_stack.backend` (from `{tech_stack_backend}`) is null, missing, or too generic (e.g., "Any") in this scenario, it is your responsibility as a council to propose and agree on one or more specific, suitable backend technologies. Do not finalize the negotiation without a concrete backend technology if one is required for a web or fullstack project.
 
 Once final consensus is reached, the agreed stack is locked in `approved_tech_stack`, and must not be changed in later phases.
 
