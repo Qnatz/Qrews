@@ -29,23 +29,21 @@ Memory Context:
 
 RESPONSE_FORMAT_TEMPLATE = """
 === RESPONSE REQUIREMENTS ===
-1. Use EXACTLY this structure:
-   Thought: [Your reasoning process]
-   Action: [EXACTLY ONE: {tool_names}]
-   Action Input: [Input for the action]
-   Observation: [Result will appear here]
-   Final Answer: [Your conclusion]
+1. Structure your response:
+   Thought: [Your reasoning process. If you decide to use a tool, explain why and what you expect from it. If you are providing a final answer, explain how you arrived at it.]
 
-2. Critical Rules:
-   - Thought MUST be followed by Action
-   - Never write "Observation:" yourself
-   - If done, write "Final Answer:" with summary
-   - Maintain JSON-compatible outputs
-   - Never stop after Thought without Action
-   - Prefer ctags tools for symbol navigation
-   - Use text search for patterns and messages
-   - Combine tools: search_ctags → get_symbol_context → read_file
-   - Rebuild ctags index after structural changes
+2. To use a tool:
+   If you determine a tool from the 'AVAILABLE TOOLS' section is needed, your response should include a `functionCall` to one of them. The system will execute the tool and provide you with its output in a subsequent turn. You should then continue with your thought process and, if ready, provide the "Final Answer:".
+
+3. To provide a direct answer:
+   If no tool is needed, or after receiving and processing tool output, provide your comprehensive answer or requested structured output (e.g., JSON, code) under the "Final Answer:" heading.
+   Final Answer: [Your conclusion, generated content like JSON, code, etc.]
+
+4. Critical Rules:
+   - Always start with "Thought:".
+   - If you use a tool by making a `functionCall`, the system handles its execution. Do not type "Action:" or "Action Input:" or "Observation:".
+   - When providing your final output (e.g., JSON, code, or text conclusion), it MUST be prefixed with "Final Answer:".
+   - Ensure any JSON you output (e.g., in "Final Answer:") is valid and strictly adheres to any specified schemas in the agent-specific instructions.
 """
 
 NAVIGATION_TIPS = """
@@ -80,8 +78,11 @@ PROJECT_ANALYZER_PROMPT = AGENT_ROLE_TEMPLATE + """
 Your task: Analyze user requirements to determine project type and key characteristics.
 
 === INSTRUCTIONS ===
-**VERY IMPORTANT: Your entire response MUST be ONLY the JSON object described below. Do NOT include any other text, prefixes like 'Thought:', 'Action:', 'Final Answer:', or markdown like '```json'. The JSON object itself is your complete and final answer.**
+1. Start your response with a "Thought:" process, explaining your analysis steps.
+2. After your thought process, provide the final JSON output prefixed with "Final Answer:".
+3. The JSON object itself, under "Final Answer:", is your primary deliverable. Do not include markdown like '```json' around the "Final Answer:" block.
 
+Specific JSON content requirements:
 1. Classify project type: backend, web, mobile, or fullstack.
 2. Identify core requirements and technical needs.
 3. Break down user input into a LIST of actionable technical REQUIREMENTS.
@@ -99,9 +100,35 @@ Your task: Analyze user requirements to determine project type and key character
    - frontend_needed (boolean)
    - mobile_needed (boolean)
    - key_requirements (list of strings, representing technical requirements)
-   - suggested_tech_stack (object: an object with '{{frontend}}', '{{backend}}', and '{{database}}' string keys. Each key should hold a string proposing a specific technology (e.g., "React", "Node.js/Express", "PostgreSQL") or be `null` if that component is not applicable or needed for the project. For example, for a simple static HTML/CSS/JS website, it might be `{{{{\"frontend\": \"HTML/CSS/JavaScript\", \"backend\": null, \"database\": null}}}}`. Be conservative with suggestions.)
+   - suggested_tech_stack (object: an object with 'frontend', 'backend', and 'database' string keys. Each key should hold a string proposing a specific technology or be `null` if not applicable.
+            - **Specific conditions for 'web' or 'fullstack' projects:**
+                - If `project_type_confirmed` is 'web' or 'fullstack':
+                    - `backend_needed` MUST usually be `true`, and `suggested_tech_stack.backend` MUST propose a relevant backend technology (e.g., "Node.js/Express", "Python/Django").
+                    - An exception is if the project objective EXPLICITLY and CLEARLY describes a 'single static HTML page with no server interaction', 'client-side only application with no data persistence needs', or a similar very simple static scenario. In such EXPLICIT static cases ONLY, `backend_needed` can be `false` and `suggested_tech_stack.backend` can be `null`.
+                    - For any other type of 'web' or 'fullstack' project (e.g., 'a website with one page' that isn't explicitly described as static-only, or any site involving forms, dynamic data, user accounts, etc.), you MUST assume a backend is required.
+            - For non-web project types, determine `backend_needed` and `suggested_tech_stack.backend` based on their specific requirements.
+            - Be conservative with specific technology suggestions if unsure, but ensure the `backend` field is appropriately non-null if a backend is deemed necessary by the conditions above.)
 
 {common_context}
+
+""" + RESPONSE_FORMAT_TEMPLATE + """
+
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your detailed analysis process, how you determined the project type, key requirements, and technology suggestions based on the user's input and project context.]
+Final Answer:
+{{
+  "project_type_confirmed": "...",
+  "project_summary": "...",
+  "backend_needed": true/false,
+  "frontend_needed": true/false,
+  "mobile_needed": true/false,
+  "key_requirements": ["...", "..."],
+  "suggested_tech_stack": {{
+    "frontend": "...",
+    "backend": "...",
+    "database": "..."
+  }}
+}}
 """
 
 PLANNER_PREAMBLE = """VERY IMPORTANT AND NON-NEGOTIABLE INSTRUCTIONS:
@@ -134,13 +161,11 @@ Your task: Create COMPREHENSIVE development plan with milestones and tasks.
 
 {common_context}
 """ + RESPONSE_FORMAT_TEMPLATE + """
-=== OUTPUT FORMAT ===
-Thought: [Your planning process, including how you are structuring the milestones and tasks according to the instructions. Specifically mention how you are incorporating post-deployment, specific testing, backend for mobile (if applicable), and VCS/build tasks into Milestone 1.]
-CONTEXT: [2-3 sentence project status - include technical details about the current state or starting point, based on the objective and provided context.]
 
-**VERY IMPORTANT: The 'FINAL PLAN' section of your response MUST be a single, valid JSON object matching this structure. Do not include any text before or after this JSON object for the 'FINAL PLAN' part.**
-FINAL PLAN:
-```json
+=== OUTPUT STRUCTURE EXPECTATION ===
+Thought: [Your planning process, including how you are structuring the milestones and tasks according to the instructions. Specifically mention how you are incorporating post-deployment, specific testing, backend for mobile (if applicable), and VCS/build tasks into Milestone 1. Also include a 2-3 sentence CONTEXT section here about the project status - technical details about current state or starting point, based on objective and provided context.]
+
+Final Answer:
 {{
   "milestones": [
     {{
@@ -213,7 +238,13 @@ Your task: Design SYSTEM ARCHITECTURE based on `project_type`, strictly adhering
     - Data versioning or timestamps (e.g., `lastModified` fields in relevant data models).
     - Sync state flags (e.g., `PENDING`, `SYNCED`, `CONFLICT`).
     - A conceptual component responsible for managing the synchronization process.
-- **Crucial: Tech Proposals:** The `tech_proposals` section (a top-level key in the JSON output) MUST be included. You MUST propose specific technologies for the 'web_backend' category. You MAY also propose for 'media_storage' or 'database' if relevant and the existing stack description ({tech_stack_backend_name}, {tech_stack_database_name}) is too generic for a concrete implementation choice (e.g., "Python" instead of "Django", or "SQL" instead of "PostgreSQL").
+- **Crucial: Tech Proposals:** The `tech_proposals` section (a top-level key in the JSON output) MUST be included.
+    - You MUST provide at least one concrete technology proposal for the 'web_backend' category in your `tech_proposals`.
+    - **If the `project_type` (available in your context, typically as `{project_type}` or derived from `{{analysis.project_type_confirmed}}`) is 'web' or 'fullstack' AND `{{analysis.backend_needed}}` (available in your context from `{{analysis.backend_needed}}`) is `true`, but the provided `{tech_stack_backend_name}` (from the `{relevant_tech_stack_list}` which reflects the current fixed stack for your design) is 'Not Specified', `None`, an empty string, or clearly a placeholder rather than a concrete technology:
+        - You are STILL REQUIRED to propose one or more specific, suitable backend technologies (e.g., "Node.js with Express.js", "Python with Django/Flask", "Java with Spring Boot"). Choose one that aligns well with other stack components if specified (like frontend or database) or is a common, versatile choice for the project type.
+        - In such a case, your justification for the chosen backend technology should explain why it's a good fit for the project, given the objective and key requirements. This proposal is critical for defining the backend technology.
+    - Even if `{tech_stack_backend_name}` *is* specific and part of your `{relevant_tech_stack_list}`, you should still list it as a proposal under the `web_backend` category in your `tech_proposals` to confirm its use in your architecture and provide your justification for it within the architectural context. This ensures the `web_backend` category in your `tech_proposals` is always populated with a concrete, justified technology if a backend is part of the fixed stack for a web/fullstack project.
+    - You MAY also propose for 'media_storage' or 'database' if relevant and the existing stack description (e.g., `{tech_stack_database_name}`) is too generic for a concrete implementation choice (e.g., if it just says "SQL" you might propose "PostgreSQL"), or to confirm a specific choice already provided in your fixed stack.
   - For each proposal, provide:
     - `technology`: The specific name of the technology (e.g., "Node.js with Express.js", "Amazon S3", "PostgreSQL").
     - `reason`: Detailed justification for choosing this technology in the context of the project and architecture. When proposing for `database` or `mobile_database` categories in the context of an offline synchronization requirement, your `reason` field should explicitly mention how the chosen database technology supports or facilitates the proposed offline synchronization strategy.
@@ -236,10 +267,12 @@ Your task: Design SYSTEM ARCHITECTURE based on `project_type`, strictly adhering
     *   `justification` (string: a concise justification of architectural decisions)
 *   `tech_proposals` (object) which MUST contain at least the `web_backend` category (formatted as a list of proposal objects, even if only one proposal). Other categories like `frontend`, `database`, `media_storage`, etc., should be included if relevant to your design, also formatted as lists of proposal objects, each object containing `technology`, `reason`, `confidence`, and `effort_estimate` keys.
 
-=== RESPONSE FORMAT ===
-**VERY IMPORTANT: Your entire response MUST be ONLY the JSON object described below. Do NOT include any other text, prefixes like 'Thought:', 'Action:', 'Final Answer:', or markdown like '```json'. The JSON object itself is your complete and final answer.**
+""" + RESPONSE_FORMAT_TEMPLATE + """
 
-```json
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your detailed architectural design process. Explain your component choices, interactions, and justifications, ensuring strict adherence to the provided fixed technology stack. Describe how you are fulfilling the structural requirements and formulating technology proposals.]
+
+Final Answer:
 {{
   "architecture_design": {{
     "diagram": "[CONCISE Component Diagram or Directory Structure, textual if needed, using fixed stack technologies.]",
@@ -362,10 +395,11 @@ Relevant Plan Items for API Design: {plan_summary_for_api_design}
 
 {common_context}
 """ + RESPONSE_FORMAT_TEMPLATE + """
-=== OUTPUT FORMAT ===
-Thought: [Your design process for the OpenAPI 3.0.x JSON specification, keeping Node.js/Express compatibility in mind. Detail your choices for paths, methods, request/response schemas, and data types. Explain how this design is RESTful and suitable for Node.js/Express.]
-FINAL API SPECS:
-```json
+
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your design process for the OpenAPI 3.0.x JSON specification, keeping Node.js/Express compatibility in mind. Detail your choices for paths, methods, request/response schemas, data types, security schemes, and standardized error responses. Explain how this design is RESTful and suitable for Node.js/Express, and how it adheres to all instructions.]
+
+Final Answer:
 {{
   "openapi": "3.0.0",
   "info": {{
@@ -514,7 +548,38 @@ FINAL API SPECS:
 CODE_WRITER_PROMPT = AGENT_ROLE_TEMPLATE + """
 Your task: Generate production-quality code in small, testable units.
 
-=== NAVIGATION GUIDANCE ===
+=== INSTRUCTIONS ===
+1.  **Understand Task & Context:** Review the task, architecture, API specs, and relevant plan items.
+2.  **Tool Usage (Optional but Recommended):**
+    *   Use `search_ctags` to find existing symbols or related code.
+    *   Use `get_symbol_context` to understand the context of found symbols.
+    *   Use `read_file` to examine existing implementations if needed.
+    *   If you use tools, explain your reasoning in the "Thought:" section. The system will handle the `functionCall` and provide results.
+3.  **Code Generation:**
+    *   Implement using the **{tech_stack_backend_name}** (for backend tasks) or **{tech_stack_frontend_name}** (for frontend tasks) framework/language.
+    *   Implement a SMALL, SINGLE function, class, component, or a well-defined part of one.
+    *   Your generated code MUST include:
+        *   Appropriate type annotations.
+        *   Clear docstrings or code comments.
+        *   Robust error handling.
+        *   Unit test stubs or suggestions.
+        *   Adherence to security best practices and the specified technology stack.
+4.  **File Saving Note:** The code you generate under "Final Answer:" will be automatically saved by the system to the `current_file_path` provided in your context. You DO NOT need to use file writing tools.
+
+{common_context}
+""" + RESPONSE_FORMAT_TEMPLATE + """
+
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your plan for generating the code. If using tools like `search_ctags`, explain here. Then, detail your code generation strategy, including language, function/class structure, error handling, and test stubs, adhering to the {tech_stack_backend_name} or {tech_stack_frontend_name}.]
+
+Final Answer:
+```[language_extension_for_markdown_highlighting]
+[Your generated code content here. This is what will be saved.]
+```
+"""
+
+WEB_DEVELOPER_PROMPT = AGENT_ROLE_TEMPLATE + """
+You are a Frontend Developer specializing in **{tech_stack_frontend_name}**. You're part of an AI development team working on:
 - Generate ctags index when starting new features (if necessary)
 - Search for related symbols BEFORE implementing
 - Get context for similar implementations
@@ -600,10 +665,11 @@ Responsive Breakpoints: {breakpoints}
 
 {common_context}
 """ + RESPONSE_FORMAT_TEMPLATE + """
-=== OUTPUT FORMAT ===
-Thought: [Your design and code generation process. Explain your component structure, state management, responsive considerations, API integrations, and how you are using the specified {tech_stack_frontend_name}. Detail any templates used or why you chose to generate from scratch. Describe each file you are generating.]
-FINAL ANSWER:
-```json
+
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your design and code generation process. Explain your component structure, state management, responsive considerations, API integrations, and how you are using the specified {tech_stack_frontend_name}. Detail any templates used or why you chose to generate from scratch. Describe each file you are generating in the `generated_code_files` list.]
+
+Final Answer:
 {{
   "design_overview": {{
     "component_structure": "Example: Login page contains LoginForm component, which includes EmailInput, PasswordInput, and SubmitButton components.",
@@ -677,11 +743,12 @@ Platform Specifics: {platform_specifics}
             *   `code_content` (string): The actual generated code.
 
 {common_context}
+""" + RESPONSE_FORMAT_TEMPLATE + """
 
-=== RESPONSE FORMAT ===
-**VERY IMPORTANT: Your entire response MUST be ONLY the JSON object described below. Do NOT include any other text, prefixes like 'Thought:', 'Action:', 'Final Answer:', or markdown like '```json'. The JSON object itself is your complete and final answer.**
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your detailed design and code generation process for the mobile components. Explain your choices for component structure, navigation, state management, API integration, and any specific framework solutions using {tech_stack_frontend_name}. If proposing technologies (like `mobile_database`), justify them. Describe each file you are generating in `generated_code_files`.]
 
-```json
+Final Answer:
 {{
   "mobile_details": {{
     "component_structure": "[CONCISE bullet-point list of key mobile components and hierarchy using {tech_stack_frontend_name}. Example: User Profile screen contains AvatarView, UserInfoSection, ActionButtons.]",
@@ -731,8 +798,11 @@ Your task: Create COMPREHENSIVE test plan AND IMPLEMENT the tests.
 
 {common_context}
 """ + RESPONSE_FORMAT_TEMPLATE + """
-=== OUTPUT FORMAT ===
-Thought: [Your testing strategy, including prioritization of test areas.]
+
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your testing strategy, including prioritization of test areas for the specified component/function. Outline the types of tests (Unit, Integration, E2E) and coverage goals if applicable.]
+
+Final Answer:
 TEST PLAN:
 Component: [Name of the specific component or function being tested, e.g., UserAuthenticationService]
 
@@ -776,13 +846,18 @@ Your task: Debug and fix code issues.
 
 {common_context}
 """ + RESPONSE_FORMAT_TEMPLATE + """
-=== OUTPUT FORMAT ===
-Thought: [Debugging analysis]
+
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your debugging analysis. Describe how you identified the root cause based on the error report and by using any necessary tools (e.g., search_ctags, get_symbol_context, read_file). Explain the fix.]
+
+Final Answer:
 FIXED CODE:
-[Corrected code with changes highlighted]
+```[language_extension_for_markdown_highlighting]
+[Corrected code with changes clearly indicated or the full corrected snippet.]
+```
 
 PREVENTION:
-[Strategy to avoid similar issues]
+[Strategy to avoid similar issues in the future.]
 """
 
 TECH_NEGOTIATOR_PROMPT = AGENT_ROLE_TEMPLATE + """
@@ -801,6 +876,7 @@ You are part of the AI agent crew responsible for **negotiating and finalizing t
    - Justification
    - Confidence score (0.0 - 1.0)
    - Effort estimate: "low", "medium", or "high"
+5. **Critical Backend Check for Web Projects**: Review the `analysis.project_type_confirmed` and `analysis.backend_needed` fields from the input context. If `analysis.project_type_confirmed` is 'web' or 'fullstack' AND `analysis.backend_needed` is `true`, your collective proposals in the 'Final Answer:' MUST include at least one concrete technology proposal for the 'backend' category. If the initial `suggested_tech_stack.backend` (from `{tech_stack_backend}`) is null, missing, or too generic (e.g., "Any") in this scenario, it is your responsibility as a council to propose and agree on one or more specific, suitable backend technologies. Do not finalize the negotiation without a concrete backend technology if one is required for a web or fullstack project.
 
 Once final consensus is reached, the agreed stack is locked in `approved_tech_stack`, and must not be changed in later phases.
 
@@ -814,11 +890,12 @@ Once final consensus is reached, the agreed stack is locked in `approved_tech_st
 {key_requirements}
 
 {common_context}
+""" + RESPONSE_FORMAT_TEMPLATE + """
 
-=== OUTPUT FORMAT ===
-Your output must be a JSON array of proposals in the following format:
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your reasoning process for the technology proposals. Discuss how you are evaluating the suggested stack, project requirements, and making decisions for each category (frontend, backend, database, etc.). Explain your confidence and effort estimates.]
 
-```json
+Final Answer:
 [
   {{
     "category": "backend",
@@ -892,7 +969,27 @@ f. At the very beginning of a project, you should have used `read_project_contex
 Recent History:
 {history}
 
-Available Agents: {tool_names}
+=== FAILURE HANDLING & HUMAN INTERVENTION ===
+If a critical phase fails, results in an impasse, or requires explicit oversight (e.g., Tech Council consensus fails, planning results in major unresolved risks, an agent cannot proceed due to ambiguity):
+1.  **Analyze Failure:** Understand the reason for failure and any concerns raised.
+2.  **Consider Human Approval Tool:** If the situation is nuanced, involves subjective judgment, or if a proposed path forward needs human validation, you should consider using the `human_approval` tool. This is especially relevant if automated consensus (like Tech Council) fails but the reasons might be acceptable to a human (e.g., approving a static site design where `backend_needed` is false and thus no backend is specified).
+3.  **Using the `human_approval` Tool:**
+    *   To use it, your LLM should generate a `functionCall` to `human_approval`.
+    *   The `prompt_to_human` argument for the tool must be a clear question or statement explaining:
+        *   The context of the problem or decision point.
+        *   Any relevant data or conflicting agent opinions.
+        *   What specific approval or input is required from the human.
+    *   Example `prompt_to_human`: "Tech Council validation failed for project '{project_name}'. Concerns: [List concerns]. Analysis indicates backend_needed={project_context.analysis.backend_needed}. Current proposed stack: [Summarize stack]. Does human approve proceeding with this stack, or suggest modifications?" (Ensure you construct this argument dynamically based on actual context).
+4.  **Acting on Human Feedback:**
+    *   The `human_approval` tool will return a string: "approved" or "rejected".
+    *   If "approved": Log this approval and proceed with the action that was pending human validation.
+    *   If "rejected": Log the rejection. You may need to:
+        *   Halt the workflow and report the human rejection as the reason.
+        *   Re-evaluate the situation and delegate new tasks to other agents to address the implicit reasons for rejection.
+        *   If possible, use the `human_approval` tool again with a revised proposal if you can infer a path forward.
+5.  **Fallback:** If human approval is not sought or is rejected and no alternative automated path is clear, you must clearly state that the project workflow is blocked or has failed due to these unresolved issues in your "Final Answer:".
+
+Available Tools: {tool_names}
 
 === RESPONSE FORMAT ===
 Thought: [Your coordination plan]

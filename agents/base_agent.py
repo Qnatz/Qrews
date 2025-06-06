@@ -133,15 +133,19 @@ class Agent:
             s.bind(('', port))
             return s.getsockname()[1]
 
-    def _invoke_model(self, model_name: str, prompt: str, uses_tools: bool) -> str:
+    def _invoke_model(self, model_name: str, prompt: str, uses_tools: bool, contents: Optional[List[Dict[str, Any]]] = None) -> str:
         self.logger.log(f"[{self.name}] Invoking model: {model_name}", self.role)
         self.current_model = model_name
 
         if model_name.startswith("gemini-"):
             if uses_tools:
-                return self._call_gemini_with_tools(prompt)
+                # Pass contents only if it's part of a multi-turn tool interaction.
+                # For the initial call, _call_gemini_with_tools will create its own 'contents' from 'prompt'.
+                # This logic might need refinement based on how conversation history is managed by the caller.
+                # For now, assuming 'perform_task' doesn't manage this level of history for _call_gemini_with_tools.
+                return self._call_gemini_with_tools(prompt, contents=contents)
             else:
-                return self._call_gemini(prompt)
+                return self._call_gemini(prompt) # _call_gemini typically doesn't need prior contents for simple generation
         elif model_name in self.strategy_config.LOCAL_MODEL_ENDPOINTS:
             endpoint_url = self.strategy_config.LOCAL_MODEL_ENDPOINTS[model_name]
             if uses_tools:
@@ -153,13 +157,14 @@ class Agent:
             self.logger.log(f"[{self.name}] Unknown model_name: {model_name}. Cannot invoke.", self.role, level="ERROR")
             return f"Error: Unknown model_name {model_name}"
 
-    def _execute_task_with_retry_and_fallback(self, prompt: str, uses_tools: bool) -> str:
+    def _execute_task_with_retry_and_fallback(self, prompt: str, uses_tools: bool, contents: Optional[List[Dict[str, Any]]] = None) -> str:
         primary_model_to_try = self.primary_model_name
         self.current_model = primary_model_to_try
 
         try:
             self.logger.log(f"[{self.name}] Primary attempt with {self.current_model}", self.role)
-            response = self._invoke_model(self.current_model, prompt, uses_tools)
+            # Pass contents down to _invoke_model
+            response = self._invoke_model(self.current_model, prompt, uses_tools, contents=contents)
 
             if response.startswith("Error:") or "Rate limit exceeded" in response or "overloaded" in response or "503" in response:
                 raise Exception(response)
@@ -271,58 +276,166 @@ class Agent:
         except requests.exceptions.RequestException as e: raise Exception(f"Request failed for {self.current_model}: {str(e)}")
         except Exception as e: raise Exception(f"Processing error for {self.current_model}: {str(e)}")
 
-    def _call_gemini_with_tools(self, prompt: str) -> str:
+    def _call_gemini_with_tools(self, prompt: str, contents: Optional[List[Dict[str, Any]]] = None) -> str:
         url = f"{GeminiConfig.BASE_URL}/{self.current_model}:generateContent"
+
+        if contents is None:
+            current_contents = [{'role': 'user', 'parts': [{'text': prompt}]}]
+        else:
+            current_contents = contents # Use provided history
+
         payload = {
-            'contents': [{'parts': [{'text': prompt}]}],
+            'contents': current_contents,
             'generationConfig': self.generation_config,
             'safetySettings': GeminiConfig.SAFETY_SETTINGS,
             'tools': [{'functionDeclarations': self.tools}]
         }
         headers = {'Content-Type': 'application/json'}
         
+        self.logger.log(f"[{self.name}] Initial Gemini API call with tools. Model: {self.current_model}. Contents: {json.dumps(current_contents, indent=2)}", self.role)
+
         try:
-            response = requests.post(
+            # First API Call
+            response1 = requests.post(
                 url, params={'key': GeminiConfig.API_KEY}, headers=headers, json=payload, timeout=90
             )
-            response.raise_for_status()
-            data = response.json()
+            response1.raise_for_status()
+            data1 = response1.json()
             
-            if 'usageMetadata' in data:
-                usage = data['usageMetadata']
-                self.logger.log(f"[{self.name}] Tools Tokens: {usage.get('totalTokenCount', 0)}", self.role)
+            self.logger.log(f"[{self.name}] First API call response: {json.dumps(data1, indent=2)}", self.role)
+
+            if 'usageMetadata' in data1:
+                usage = data1['usageMetadata']
+                self.logger.log(f"[{self.name}] Tools Tokens (1st call): {usage.get('totalTokenCount', 0)}", self.role)
             
-            candidates = data.get('candidates', [])
-            if candidates and 'content' in candidates[0]:
-                parts = candidates[0]['content'].get('parts', [])
-                for part in parts:
-                    if 'functionCall' in part:
-                        function_call = part['functionCall']
-                        function_name = function_call.get('name', '')
-                        function_args = function_call.get('args', {})
-                        self.logger.log(f"[{self.name}] Tool call: {function_name}", self.role)
-                        if self.tool_kit and hasattr(self.tool_kit, function_name):
-                            try:
-                                tool_result = getattr(self.tool_kit, function_name)(**function_args)
-                                return f"Tool executed: {function_name}\nResult: {tool_result}"
-                            except Exception as e: return f"Tool execution failed: {function_name}\nError: {str(e)}"
-                        else: return f"Tool not found: {function_name}"
-                for part in parts:
+            candidates1 = data1.get('candidates', [])
+            if not candidates1:
+                self.logger.log(f"[{self.name}] No candidates in first API response.", self.role, level="WARNING")
+                return "No response generated (no candidates)"
+
+            # Append model's first response to contents
+            # IMPORTANT: Ensure this is the actual model response content, not the whole API response data.
+            # Based on Gemini API, the model's response that might contain a functionCall is candidates[0]['content']
+            if 'content' in candidates1[0]:
+                 model_response_content = candidates1[0]['content']
+                 # Ensure 'role' is set to 'model' for this part of the history
+                 if 'role' not in model_response_content:
+                     model_response_content['role'] = 'model' # Gemini API expects 'model' role for its responses
+                 current_contents.append(model_response_content)
+            else:
+                self.logger.log(f"[{self.name}] No 'content' in candidate of first API response. Cannot append to history.", self.role, level="WARNING")
+                # Decide how to handle this - potentially return an error or a direct text response if available
+
+
+            parts1 = candidates1[0].get('content', {}).get('parts', [])
+
+            function_call_part = None
+            for part in parts1:
+                if 'functionCall' in part:
+                    function_call_part = part
+                    break
+
+            if function_call_part:
+                function_call = function_call_part['functionCall']
+                function_name = function_call.get('name', '')
+                function_args = function_call.get('args', {})
+                self.logger.log(f"[{self.name}] Tool call requested: {function_name} with args: {function_args}", self.role)
+
+                tool_result_content = ""
+                if self.tool_kit and hasattr(self.tool_kit, function_name):
+                    try:
+                        tool_result = getattr(self.tool_kit, function_name)(**function_args)
+                        # Ensure tool_result is JSON serializable if it's an object, or a string
+                        tool_result_content = json.dumps({"content": tool_result}) if not isinstance(tool_result, str) else tool_result
+                        self.logger.log(f"[{self.name}] Tool {function_name} executed successfully. Result: {tool_result_content}", self.role)
+                    except Exception as e:
+                        tool_result_content = json.dumps({"error": f"Tool execution failed: {str(e)}"})
+                        self.logger.log(f"[{self.name}] Tool {function_name} execution failed: {e}", self.role, level="ERROR")
+                else:
+                    tool_result_content = json.dumps({"error": f"Tool not found: {function_name}"})
+                    self.logger.log(f"[{self.name}] Tool {function_name} not found in tool_kit.", self.role, level="ERROR")
+
+                # Construct function response part for the second API call
+                function_response_content = {
+                    "role": "user", # As per Gemini Python SDK examples for function response part wrapper
+                                    # Some direct REST examples might use "function" - check API docs if "user" causes issues
+                    "parts": [
+                        {
+                            "functionResponse": {
+                                "name": function_name,
+                                "response": {
+                                    "content": tool_result_content # Actual tool output (string or JSON string)
+                                }
+                            }
+                        }
+                    ]
+                }
+                current_contents.append(function_response_content)
+
+                self.logger.log(f"[{self.name}] Preparing for second Gemini API call. Contents: {json.dumps(current_contents, indent=2)}", self.role)
+
+                # Second API Call
+                payload_2 = {
+                    'contents': current_contents, # Now includes original prompt, model's func call, and func result
+                    'generationConfig': self.generation_config,
+                    'safetySettings': GeminiConfig.SAFETY_SETTINGS,
+                    # Tools might not be needed here if we expect a text response, but including them might be safer
+                    # or allow for follow-up tool calls if the model decides so.
+                    'tools': [{'functionDeclarations': self.tools}]
+                }
+
+                response2 = requests.post(
+                    url, params={'key': GeminiConfig.API_KEY}, headers=headers, json=payload_2, timeout=90
+                )
+                response2.raise_for_status()
+                data2 = response2.json()
+                self.logger.log(f"[{self.name}] Second API call response: {json.dumps(data2, indent=2)}", self.role)
+
+                if 'usageMetadata' in data2:
+                    usage2 = data2['usageMetadata']
+                    self.logger.log(f"[{self.name}] Tools Tokens (2nd call): {usage2.get('totalTokenCount', 0)}", self.role)
+
+                candidates2 = data2.get('candidates', [])
+                if candidates2 and 'content' in candidates2[0]:
+                    parts2 = candidates2[0]['content'].get('parts', [])
+                    for part in parts2:
+                        if 'text' in part:
+                            response_text = part['text'].strip()
+                            if response_text:
+                                self.logger.log(f"[{self.name}] Final text response after tool call: {response_text}", self.role)
+                                return response_text
+
+                self.logger.log(f"[{self.name}] No text part in second API response after tool call.", self.role, level="WARNING")
+                return "No text response after tool execution cycle."
+
+            else: # No functionCall in the first response, direct text response
+                for part in parts1:
                     if 'text' in part:
                         response_text = part['text'].strip()
-                        if response_text: return response_text
-            
-            if candidates and candidates[0].get('finishReason') == 'SAFETY':
-                return "Response blocked by safety filters. Please rephrase your request."
-            self.logger.log(f"[{self.name}] Empty tools response from {self.current_model}", self.role, level="WARNING")
-            return "No response generated with tools"
+                        if response_text:
+                            self.logger.log(f"[{self.name}] Direct text response (no tool call): {response_text}", self.role)
+                            return response_text
+
+                # Handle cases where there's no function call and no text (e.g. safety block)
+                if candidates1 and candidates1[0].get('finishReason') == 'SAFETY':
+                    self.logger.log(f"[{self.name}] Response blocked by safety filters (1st call).", self.role, level="WARNING")
+                    return "Response blocked by safety filters. Please rephrase your request."
+
+                self.logger.log(f"[{self.name}] Empty or non-text response from 1st call (no tool call). Parts: {parts1}", self.role, level="WARNING")
+                return "No response generated (1st call, no tool, no text)"
             
         except requests.exceptions.HTTPError as e:
+            error_body = e.response.text
+            self.logger.log(f"[{self.name}] HTTP Error: {e.response.status_code} - {error_body}", self.role, level="ERROR")
             if e.response.status_code == 429: raise Exception(f"Rate limit exceeded for {self.current_model}")
             elif e.response.status_code == 403: raise Exception(f"API key invalid or quota exceeded for {self.current_model}")
-            else: raise Exception(f"HTTP {e.response.status_code}: {e.response.text}")
-        except requests.exceptions.RequestException as e: raise Exception(f"Request failed for {self.current_model}: {str(e)}")
-        except Exception as e: raise Exception(f"Processing error for {self.current_model}: {str(e)}")
+            else: raise Exception(f"HTTP {e.response.status_code}: {error_body}")
+        except requests.exceptions.RequestException as e:
+            self.logger.log(f"[{self.name}] Request Exception: {str(e)}", self.role, level="ERROR")
+            raise Exception(f"Request failed for {self.current_model}: {str(e)}")
+        except Exception as e:
+            self.logger.log(f"[{self.name}] Processing Error: {str(e)}", self.role, level="ERROR")
+            raise Exception(f"Processing error for {self.current_model}: {str(e)}")
 
     def _parse_response(self, response_text: str, project_context: ProjectContext) -> dict:
         parsed_result = {
@@ -366,17 +479,24 @@ class Agent:
         self.tools = tool_kit.get_tool_definitions() if tool_kit else []
         self.logger.log(f"[{self.name}] Configured with {len(self.tools)} tools", self.role)
 
-    def validate_stack(self, approved_stack: Dict[str, Any], platform_requirements: Dict[str, Any]) -> Dict[str, Any]:
-        self.logger.log(f"[{self.name}] Validating stack (base implementation): {approved_stack}", self.role)
-        if platform_requirements.get("web") and not approved_stack.get("web_backend"):
-            concern_msg = f"{self.name} ({self.role}): Web platform required but no web_backend specified."
-            self.logger.log(concern_msg, self.role, level="WARNING")
-            return {"approved": False, "concerns": concern_msg}
+    def validate_stack(self, approved_stack: Dict[str, Any], platform_requirements: Dict[str, Any], backend_needed: bool) -> Dict[str, Any]:
+        self.logger.log(f"[{self.name}] Validating stack (base implementation): {approved_stack}, Platform Req: {platform_requirements}, Backend Needed: {backend_needed}", self.role)
+
+        if platform_requirements.get("web"):
+            if backend_needed:
+                if not approved_stack.get("web_backend"):
+                    concern_msg = f"{self.name} ({self.role}): Web platform requires a web_backend (since backend_needed is True)."
+                    self.logger.log(concern_msg, self.role, level="WARNING")
+                    return {"approved": False, "concerns": concern_msg}
+            else:
+                self.logger.log(f"[{self.name}] ({self.role}): Web platform detected, but backend_needed is False. Skipping web_backend validation.", self.role)
+
         is_mobile_project = platform_requirements.get("ios") or platform_requirements.get("android")
         if is_mobile_project and not approved_stack.get("mobile_database"):
-            concern_msg = f"{self.name} ({self.role}): Mobile platform required but no mobile_database specified."
+            concern_msg = f"{self.name} ({self.role}): Mobile platform requires a mobile_database specified." # Corrected message
             self.logger.log(concern_msg, self.role, level="WARNING")
             return {"approved": False, "concerns": concern_msg}
+
         return {"approved": True, "concerns": None}
 
 def _process_tech_proposals(logger: Logger, agent_name: str, agent_role: str, raw_proposals_dict: Optional[Dict[str, Any]], project_context: ProjectContext):
@@ -801,35 +921,60 @@ class FrontendBuilder(Agent):
 class MobileDeveloper(Agent):
     def __init__(self, logger, db: Database = None):
         super().__init__('mobile_developer', 'Mobile Developer', logger, db=db)
-    def validate_stack(self, approved_stack: Dict[str, Any], platform_requirements: Dict[str, Any]) -> Dict[str, Any]:
-        self.logger.log(f"[{self.name}] Validating stack with mobile specialization: {approved_stack}", self.role)
+    def validate_stack(self, approved_stack: Dict[str, Any], platform_requirements: Dict[str, Any], backend_needed: bool) -> Dict[str, Any]:
+        self.logger.log(f"[{self.name}] Validating stack with mobile specialization: {approved_stack}. Backend needed: {backend_needed}", self.role)
+
+        current_agent_approved = True  # Approval status for MobileDeveloper's specific checks
+        current_agent_concerns_list = [] # List for MobileDeveloper's specific concerns
+
         is_mobile_project = platform_requirements.get("ios") or platform_requirements.get("android")
         if is_mobile_project:
             mobile_db = approved_stack.get("mobile_database")
             if not mobile_db:
-                concern_msg = f"{self.name} ({self.role}): Mobile platform required but no mobile_database specified."
-                self.logger.log(concern_msg, self.role, level="WARNING"); return {"approved": False, "concerns": concern_msg}
-            unsuitable_standalone_mobile_dbs = ["elasticsearch", "dynamodb"]
-            if mobile_db and any(unsuitable_db in mobile_db.lower() for unsuitable_db in unsuitable_standalone_mobile_dbs):
-                if "firestore" not in mobile_db.lower() and "sqlite" not in mobile_db.lower() and "roomdb" not in mobile_db.lower() and "realm" not in mobile_db.lower():
-                    concern_msg = f"{self.name} ({self.role}): Proposed mobile_database '{mobile_db}' seems unsuitable for standalone mobile use. Consider a mobile-first DB or a clear hybrid pattern."
-                    self.logger.log(concern_msg, self.role, level="WARNING")
-        is_approved = True; concerns = []
-        mobile_db = approved_stack.get("mobile_database")
-        is_android_project = platform_requirements.get("android", False)
-        if mobile_db:
-            mobile_db_lower = mobile_db.lower()
-            if "realm" in mobile_db_lower and is_android_project:
-                concerns.append("Realm selected for mobile_database on Android. Ensure justification in decision_rationale is robust, detailing specific needs (e.g., complex data, existing Realm codebase) versus Room's typical advantages for Kotlin/Jetpack.")
-            cloud_only_keywords = ["dynamodb", "cassandra", "cosmosdb"]; local_sync_keywords = ["sqlite", "room", "realm", "cache", "sync", "offline", "local", "embedded"]
-            is_cloud_only_db = any(keyword in mobile_db_lower for keyword in cloud_only_keywords)
-            has_local_strategy = any(keyword in mobile_db_lower for keyword in local_sync_keywords)
-            if is_cloud_only_db and not has_local_strategy:
-                is_approved = False; concerns.append(f"Mobile database '{mobile_db}' appears unsuitable for direct mobile use without an explicitly stated local persistence/synchronization strategy. Please clarify or revise.")
-        super_result = super().validate_stack(approved_stack, platform_requirements)
-        if not super_result.get("approved", True): is_approved = False
-        if super_result.get("concerns"): concerns.append(super_result["concerns"])
-        return {"approved": is_approved, "concerns": " | ".join(concerns) if concerns else None}
+                current_agent_approved = False
+                current_agent_concerns_list.append(f"{self.name} ({self.role}): Mobile platform required but no mobile_database specified.")
+            else: # Only proceed with further mobile_db checks if one is specified
+                unsuitable_standalone_mobile_dbs = ["elasticsearch", "dynamodb"]
+                if any(unsuitable_db in mobile_db.lower() for unsuitable_db in unsuitable_standalone_mobile_dbs):
+                    if not any(hybrid_indicator in mobile_db.lower() for hybrid_indicator in ["firestore", "sqlite", "roomdb", "realm"]):
+                        # This was a log before, making it a concern that can be reviewed, but not necessarily blocking by default.
+                        # To make it blocking, set current_agent_approved = False here.
+                        # For now, let's add it as a non-blocking warning/concern as per original behavior of just logging.
+                        # However, the problem description implies this should be a real concern if it makes the stack unsuitable.
+                        # Let's assume if it's unsuitable, it should make current_agent_approved = False
+                        current_agent_approved = False
+                        current_agent_concerns_list.append(f"{self.name} ({self.role}): Proposed mobile_database '{mobile_db}' seems unsuitable for standalone mobile use without a clear hybrid strategy (e.g., involving Firestore, SQLite, RoomDB, Realm). Consider a mobile-first DB or a clear hybrid pattern.")
+
+                is_android_project = platform_requirements.get("android", False)
+                if "realm" in mobile_db.lower() and is_android_project:
+                    current_agent_concerns_list.append("Realm selected for mobile_database on Android. Ensure justification in decision_rationale is robust, detailing specific needs (e.g., complex data, existing Realm codebase) versus Room's typical advantages for Kotlin/Jetpack.")
+
+                cloud_only_keywords = ["dynamodb", "cassandra", "cosmosdb"]
+                local_sync_keywords = ["sqlite", "room", "realm", "cache", "sync", "offline", "local", "embedded"]
+                is_cloud_only_db = any(keyword in mobile_db.lower() for keyword in cloud_only_keywords)
+                has_local_strategy = any(keyword in mobile_db.lower() for keyword in local_sync_keywords)
+
+                if is_cloud_only_db and not has_local_strategy:
+                    current_agent_approved = False
+                    current_agent_concerns_list.append(f"Mobile database '{mobile_db}' appears unsuitable for direct mobile use without an explicitly stated local persistence/synchronization strategy. Please clarify or revise.")
+
+        # Call super().validate_stack() with all required arguments, including backend_needed
+        super_result = super().validate_stack(approved_stack, platform_requirements, backend_needed)
+
+        final_approval_status = current_agent_approved
+        if not super_result.get("approved", True):
+            final_approval_status = False # If super call failed, this override also fails
+
+        final_concerns_list = current_agent_concerns_list
+        if super_result.get("concerns"):
+            # Ensure super_result["concerns"] is treated as a single string concern or list of concerns
+            if isinstance(super_result["concerns"], str):
+                final_concerns_list.append(super_result["concerns"])
+            elif isinstance(super_result["concerns"], list): # Though base currently returns string or None
+                final_concerns_list.extend(super_result["concerns"])
+
+        return {"approved": final_approval_status, "concerns": " | ".join(final_concerns_list) if final_concerns_list else None}
+
     def _parse_response(self, text: str, project_context: ProjectContext) -> dict:
         base_parsed_output = super()._parse_response(text, project_context)
         if base_parsed_output["status"] == "error" and not base_parsed_output["raw_response"]: return base_parsed_output
