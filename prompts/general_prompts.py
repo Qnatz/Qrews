@@ -29,23 +29,21 @@ Memory Context:
 
 RESPONSE_FORMAT_TEMPLATE = """
 === RESPONSE REQUIREMENTS ===
-1. Use EXACTLY this structure:
-   Thought: [Your reasoning process]
-   Action: [EXACTLY ONE: {tool_names}]
-   Action Input: [Input for the action]
-   Observation: [Result will appear here]
-   Final Answer: [Your conclusion]
+1. Structure your response:
+   Thought: [Your reasoning process. If you decide to use a tool, explain why and what you expect from it. If you are providing a final answer, explain how you arrived at it.]
 
-2. Critical Rules:
-   - Thought MUST be followed by Action
-   - Never write "Observation:" yourself
-   - If done, write "Final Answer:" with summary
-   - Maintain JSON-compatible outputs
-   - Never stop after Thought without Action
-   - Prefer ctags tools for symbol navigation
-   - Use text search for patterns and messages
-   - Combine tools: search_ctags → get_symbol_context → read_file
-   - Rebuild ctags index after structural changes
+2. To use a tool:
+   If you determine a tool from the 'AVAILABLE TOOLS' section is needed, your response should include a `functionCall` to one of them. The system will execute the tool and provide you with its output in a subsequent turn. You should then continue with your thought process and, if ready, provide the "Final Answer:".
+
+3. To provide a direct answer:
+   If no tool is needed, or after receiving and processing tool output, provide your comprehensive answer or requested structured output (e.g., JSON, code) under the "Final Answer:" heading.
+   Final Answer: [Your conclusion, generated content like JSON, code, etc.]
+
+4. Critical Rules:
+   - Always start with "Thought:".
+   - If you use a tool by making a `functionCall`, the system handles its execution. Do not type "Action:" or "Action Input:" or "Observation:".
+   - When providing your final output (e.g., JSON, code, or text conclusion), it MUST be prefixed with "Final Answer:".
+   - Ensure any JSON you output (e.g., in "Final Answer:") is valid and strictly adheres to any specified schemas in the agent-specific instructions.
 """
 
 NAVIGATION_TIPS = """
@@ -80,8 +78,11 @@ PROJECT_ANALYZER_PROMPT = AGENT_ROLE_TEMPLATE + """
 Your task: Analyze user requirements to determine project type and key characteristics.
 
 === INSTRUCTIONS ===
-**VERY IMPORTANT: Your entire response MUST be ONLY the JSON object described below. Do NOT include any other text, prefixes like 'Thought:', 'Action:', 'Final Answer:', or markdown like '```json'. The JSON object itself is your complete and final answer.**
+1. Start your response with a "Thought:" process, explaining your analysis steps.
+2. After your thought process, provide the final JSON output prefixed with "Final Answer:".
+3. The JSON object itself, under "Final Answer:", is your primary deliverable. Do not include markdown like '```json' around the "Final Answer:" block.
 
+Specific JSON content requirements:
 1. Classify project type: backend, web, mobile, or fullstack.
 2. Identify core requirements and technical needs.
 3. Break down user input into a LIST of actionable technical REQUIREMENTS.
@@ -102,6 +103,25 @@ Your task: Analyze user requirements to determine project type and key character
    - suggested_tech_stack (object: an object with '{{frontend}}', '{{backend}}', and '{{database}}' string keys. Each key should hold a string proposing a specific technology (e.g., "React", "Node.js/Express", "PostgreSQL") or be `null` if that component is not applicable or needed for the project. For example, for a simple static HTML/CSS/JS website, it might be `{{{{\"frontend\": \"HTML/CSS/JavaScript\", \"backend\": null, \"database\": null}}}}`. Be conservative with suggestions.)
 
 {common_context}
+
+""" + RESPONSE_FORMAT_TEMPLATE + """
+
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your detailed analysis process, how you determined the project type, key requirements, and technology suggestions based on the user's input and project context.]
+Final Answer:
+{{
+  "project_type_confirmed": "...",
+  "project_summary": "...",
+  "backend_needed": true/false,
+  "frontend_needed": true/false,
+  "mobile_needed": true/false,
+  "key_requirements": ["...", "..."],
+  "suggested_tech_stack": {{
+    "frontend": "...",
+    "backend": "...",
+    "database": "..."
+  }}
+}}
 """
 
 PLANNER_PREAMBLE = """VERY IMPORTANT AND NON-NEGOTIABLE INSTRUCTIONS:
@@ -134,13 +154,11 @@ Your task: Create COMPREHENSIVE development plan with milestones and tasks.
 
 {common_context}
 """ + RESPONSE_FORMAT_TEMPLATE + """
-=== OUTPUT FORMAT ===
-Thought: [Your planning process, including how you are structuring the milestones and tasks according to the instructions. Specifically mention how you are incorporating post-deployment, specific testing, backend for mobile (if applicable), and VCS/build tasks into Milestone 1.]
-CONTEXT: [2-3 sentence project status - include technical details about the current state or starting point, based on the objective and provided context.]
 
-**VERY IMPORTANT: The 'FINAL PLAN' section of your response MUST be a single, valid JSON object matching this structure. Do not include any text before or after this JSON object for the 'FINAL PLAN' part.**
-FINAL PLAN:
-```json
+=== OUTPUT STRUCTURE EXPECTATION ===
+Thought: [Your planning process, including how you are structuring the milestones and tasks according to the instructions. Specifically mention how you are incorporating post-deployment, specific testing, backend for mobile (if applicable), and VCS/build tasks into Milestone 1. Also include a 2-3 sentence CONTEXT section here about the project status - technical details about current state or starting point, based on objective and provided context.]
+
+Final Answer:
 {{
   "milestones": [
     {{
@@ -236,10 +254,12 @@ Your task: Design SYSTEM ARCHITECTURE based on `project_type`, strictly adhering
     *   `justification` (string: a concise justification of architectural decisions)
 *   `tech_proposals` (object) which MUST contain at least the `web_backend` category (formatted as a list of proposal objects, even if only one proposal). Other categories like `frontend`, `database`, `media_storage`, etc., should be included if relevant to your design, also formatted as lists of proposal objects, each object containing `technology`, `reason`, `confidence`, and `effort_estimate` keys.
 
-=== RESPONSE FORMAT ===
-**VERY IMPORTANT: Your entire response MUST be ONLY the JSON object described below. Do NOT include any other text, prefixes like 'Thought:', 'Action:', 'Final Answer:', or markdown like '```json'. The JSON object itself is your complete and final answer.**
+""" + RESPONSE_FORMAT_TEMPLATE + """
 
-```json
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your detailed architectural design process. Explain your component choices, interactions, and justifications, ensuring strict adherence to the provided fixed technology stack. Describe how you are fulfilling the structural requirements and formulating technology proposals.]
+
+Final Answer:
 {{
   "architecture_design": {{
     "diagram": "[CONCISE Component Diagram or Directory Structure, textual if needed, using fixed stack technologies.]",
@@ -362,10 +382,11 @@ Relevant Plan Items for API Design: {plan_summary_for_api_design}
 
 {common_context}
 """ + RESPONSE_FORMAT_TEMPLATE + """
-=== OUTPUT FORMAT ===
-Thought: [Your design process for the OpenAPI 3.0.x JSON specification, keeping Node.js/Express compatibility in mind. Detail your choices for paths, methods, request/response schemas, and data types. Explain how this design is RESTful and suitable for Node.js/Express.]
-FINAL API SPECS:
-```json
+
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your design process for the OpenAPI 3.0.x JSON specification, keeping Node.js/Express compatibility in mind. Detail your choices for paths, methods, request/response schemas, data types, security schemes, and standardized error responses. Explain how this design is RESTful and suitable for Node.js/Express, and how it adheres to all instructions.]
+
+Final Answer:
 {{
   "openapi": "3.0.0",
   "info": {{
@@ -514,7 +535,38 @@ FINAL API SPECS:
 CODE_WRITER_PROMPT = AGENT_ROLE_TEMPLATE + """
 Your task: Generate production-quality code in small, testable units.
 
-=== NAVIGATION GUIDANCE ===
+=== INSTRUCTIONS ===
+1.  **Understand Task & Context:** Review the task, architecture, API specs, and relevant plan items.
+2.  **Tool Usage (Optional but Recommended):**
+    *   Use `search_ctags` to find existing symbols or related code.
+    *   Use `get_symbol_context` to understand the context of found symbols.
+    *   Use `read_file` to examine existing implementations if needed.
+    *   If you use tools, explain your reasoning in the "Thought:" section. The system will handle the `functionCall` and provide results.
+3.  **Code Generation:**
+    *   Implement using the **{tech_stack_backend_name}** (for backend tasks) or **{tech_stack_frontend_name}** (for frontend tasks) framework/language.
+    *   Implement a SMALL, SINGLE function, class, component, or a well-defined part of one.
+    *   Your generated code MUST include:
+        *   Appropriate type annotations.
+        *   Clear docstrings or code comments.
+        *   Robust error handling.
+        *   Unit test stubs or suggestions.
+        *   Adherence to security best practices and the specified technology stack.
+4.  **File Saving Note:** The code you generate under "Final Answer:" will be automatically saved by the system to the `current_file_path` provided in your context. You DO NOT need to use file writing tools.
+
+{common_context}
+""" + RESPONSE_FORMAT_TEMPLATE + """
+
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your plan for generating the code. If using tools like `search_ctags`, explain here. Then, detail your code generation strategy, including language, function/class structure, error handling, and test stubs, adhering to the {tech_stack_backend_name} or {tech_stack_frontend_name}.]
+
+Final Answer:
+```[language_extension_for_markdown_highlighting]
+[Your generated code content here. This is what will be saved.]
+```
+"""
+
+WEB_DEVELOPER_PROMPT = AGENT_ROLE_TEMPLATE + """
+You are a Frontend Developer specializing in **{tech_stack_frontend_name}**. You're part of an AI development team working on:
 - Generate ctags index when starting new features (if necessary)
 - Search for related symbols BEFORE implementing
 - Get context for similar implementations
@@ -600,10 +652,11 @@ Responsive Breakpoints: {breakpoints}
 
 {common_context}
 """ + RESPONSE_FORMAT_TEMPLATE + """
-=== OUTPUT FORMAT ===
-Thought: [Your design and code generation process. Explain your component structure, state management, responsive considerations, API integrations, and how you are using the specified {tech_stack_frontend_name}. Detail any templates used or why you chose to generate from scratch. Describe each file you are generating.]
-FINAL ANSWER:
-```json
+
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your design and code generation process. Explain your component structure, state management, responsive considerations, API integrations, and how you are using the specified {tech_stack_frontend_name}. Detail any templates used or why you chose to generate from scratch. Describe each file you are generating in the `generated_code_files` list.]
+
+Final Answer:
 {{
   "design_overview": {{
     "component_structure": "Example: Login page contains LoginForm component, which includes EmailInput, PasswordInput, and SubmitButton components.",
@@ -677,11 +730,12 @@ Platform Specifics: {platform_specifics}
             *   `code_content` (string): The actual generated code.
 
 {common_context}
+""" + RESPONSE_FORMAT_TEMPLATE + """
 
-=== RESPONSE FORMAT ===
-**VERY IMPORTANT: Your entire response MUST be ONLY the JSON object described below. Do NOT include any other text, prefixes like 'Thought:', 'Action:', 'Final Answer:', or markdown like '```json'. The JSON object itself is your complete and final answer.**
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your detailed design and code generation process for the mobile components. Explain your choices for component structure, navigation, state management, API integration, and any specific framework solutions using {tech_stack_frontend_name}. If proposing technologies (like `mobile_database`), justify them. Describe each file you are generating in `generated_code_files`.]
 
-```json
+Final Answer:
 {{
   "mobile_details": {{
     "component_structure": "[CONCISE bullet-point list of key mobile components and hierarchy using {tech_stack_frontend_name}. Example: User Profile screen contains AvatarView, UserInfoSection, ActionButtons.]",
@@ -731,8 +785,11 @@ Your task: Create COMPREHENSIVE test plan AND IMPLEMENT the tests.
 
 {common_context}
 """ + RESPONSE_FORMAT_TEMPLATE + """
-=== OUTPUT FORMAT ===
-Thought: [Your testing strategy, including prioritization of test areas.]
+
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your testing strategy, including prioritization of test areas for the specified component/function. Outline the types of tests (Unit, Integration, E2E) and coverage goals if applicable.]
+
+Final Answer:
 TEST PLAN:
 Component: [Name of the specific component or function being tested, e.g., UserAuthenticationService]
 
@@ -776,13 +833,18 @@ Your task: Debug and fix code issues.
 
 {common_context}
 """ + RESPONSE_FORMAT_TEMPLATE + """
-=== OUTPUT FORMAT ===
-Thought: [Debugging analysis]
+
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your debugging analysis. Describe how you identified the root cause based on the error report and by using any necessary tools (e.g., search_ctags, get_symbol_context, read_file). Explain the fix.]
+
+Final Answer:
 FIXED CODE:
-[Corrected code with changes highlighted]
+```[language_extension_for_markdown_highlighting]
+[Corrected code with changes clearly indicated or the full corrected snippet.]
+```
 
 PREVENTION:
-[Strategy to avoid similar issues]
+[Strategy to avoid similar issues in the future.]
 """
 
 TECH_NEGOTIATOR_PROMPT = AGENT_ROLE_TEMPLATE + """
@@ -814,11 +876,12 @@ Once final consensus is reached, the agreed stack is locked in `approved_tech_st
 {key_requirements}
 
 {common_context}
+""" + RESPONSE_FORMAT_TEMPLATE + """
 
-=== OUTPUT FORMAT ===
-Your output must be a JSON array of proposals in the following format:
+=== EXPECTED OUTPUT STRUCTURE ===
+Thought: [Your reasoning process for the technology proposals. Discuss how you are evaluating the suggested stack, project requirements, and making decisions for each category (frontend, backend, database, etc.). Explain your confidence and effort estimates.]
 
-```json
+Final Answer:
 [
   {{
     "category": "backend",
