@@ -1,0 +1,22 @@
+{
+  "config_manager": "gemini-1.5-flash-latest",
+  "database_model_designer": "gemini-1.5-flash-latest",
+  "migration_generator": "gemini-1.5-flash-latest",
+  "data_access_layer_builder": "gemini-1.5-flash-latest",
+  "service_layer_builder": "gemini-1.5-flash-latest",
+  "api_endpoint_controller_generator": "gemini-1.5-flash-latest",
+  "auth_and_authorization_manager": "gemini-1.5-flash-latest",
+  "caching_layer_manager": "gemini-1.5-flash-latest",
+  "background_jobs_manager": "gemini-1.5-flash-latest",
+  "message_queue_integrator": "gemini-1.5-flash-latest",
+  "storage_service_manager": "gemini-1.5-flash-latest",
+  "email_notification_service": "gemini-1.5-flash-latest",
+  "error_handling_and_logging": "gemini-1.5-flash-latest",
+  "monitoring_and_metrics_integrator": "gemini-1.5-flash-latest",
+  "security_and_hardening": "gemini-1.5-flash-latest",
+  "performance_optimizer": "gemini-1.5-flash-latest",
+  "documentation_generator": "gemini-1.5-flash-latest",
+  "testing_suite_generator": "gemini-1.5-flash-latest",
+  "deployment_descriptor_generator": "gemini-1.5-flash-latest",
+  "maintenance_and_migration_scheduler": "gemini-1.5-flash-latest"
+}
