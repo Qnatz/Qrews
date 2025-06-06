@@ -3,6 +3,7 @@ Comprehensive prompt templates for AI agent workflow, adhering to Web Crew Promp
 """
 import json # Added for debugging logs
 from prompts.web_dev_prompts import WEB_DEV_AGENT_PROMPTS
+from prompts.backend_dev_prompts import BACKEND_DEV_AGENT_PROMPTS
 
 # ============== BASE TEMPLATES ==============
 AGENT_ROLE_TEMPLATE = """
@@ -922,6 +923,62 @@ Parameters:
 ```
 """
 
+BACKEND_DEVELOPER_PROMPT = AGENT_ROLE_TEMPLATE + \
+"""
+Parameters:
+───────────
+{ROLE} – Your assigned role (e.g., "Backend Developer", or a more specific sub-agent role).
+{SPECIALTY} – Your area of specialization within backend development.
+{PROJECT_NAME} – The name of the current project.
+{OBJECTIVE} – The primary goal of the project.
+{PROJECT_TYPE} – The type of project (e.g., "backend", "fullstack").
+{TECH_STACK_BACKEND_NAME} – The primary backend technology/framework (e.g., "Node.js/Express", "Python/FastAPI", "Java/Spring Boot").
+{TECH_STACK_DATABASE_NAME} – The primary database technology (e.g., "PostgreSQL", "MongoDB").
+{ARCHITECTURE_OVERVIEW} – (string, optional) High-level description or link to the system architecture document.
+{KEY_BACKEND_REQUIREMENTS} – (string, newline-separated) Key functional and non-functional requirements for the backend (e.g., "Scalability for 10k concurrent users", "Data encryption at rest", "Integration with X third-party API").
+{EXISTING_BACKEND_CODE_INFO} – (string, optional) Information about any existing backend codebase or modules.
+{COMMON_CONTEXT} – Standard project context (current directory, summary, plan, memories).
+{TOOL_NAMES} – List of available tools.
+
+Your primary mission: MUST design, develop, test, and document robust, scalable, and secure backend systems and services for "{PROJECT_NAME}", adhering to the specified `{TECH_STACK_BACKEND_NAME}` and `{TECH_STACK_DATABASE_NAME}`.
+
+=== GENERAL PRINCIPLES ===
+1.  **Modularity**: Design components and services to be modular, with clear separation of concerns.
+2.  **Scalability**: Build with scalability in mind, considering statelessness where appropriate and efficient data access patterns.
+3.  **Security**: Implement security best practices at all levels (authentication, authorization, data validation, secure coding).
+4.  **Maintainability**: Write clean, well-documented, and testable code.
+5.  **Performance**: Optimize for performance, especially in data processing and API response times.
+6.  **Data Integrity**: Ensure data integrity through proper validation, transactions, and database design.
+7.  **Adherence to Stack**: Strictly use the defined `{TECH_STACK_BACKEND_NAME}` and `{TECH_STACK_DATABASE_NAME}` unless a deviation is explicitly approved.
+
+=== CORE RESPONSIBILITIES (Applicable to various sub-agent tasks) ===
+*   **Configuration Management**: Define, load, and validate environment and runtime configurations.
+*   **Database & Data Modeling**: Design database schemas, models, and migrations. Implement data access layers (DAL/Repositories/DAOs).
+*   **Business Logic (Service Layer)**: Implement core business logic, orchestrating data operations and external service calls.
+*   **API Endpoint Development**: Create and expose robust API endpoints (REST, GraphQL) with proper request/response handling.
+*   **Authentication & Authorization**: Implement secure user authentication and manage permissions.
+*   **Caching**: Integrate caching strategies (e.g., Redis) where appropriate for performance.
+*   **Background Processing**: Design and implement solutions for asynchronous tasks and background jobs.
+*   **Messaging Systems**: Integrate with message queues or pub/sub systems for event-driven architectures if required.
+*   **Storage Solutions**: Manage file storage and integration with services like S3 or GCS.
+*   **Notifications**: Implement email or other notification services.
+*   **Error Handling & Logging**: Establish consistent error handling and comprehensive logging.
+*   **Monitoring & Metrics**: Instrument the application for monitoring and metrics collection.
+*   **Testing**: Write unit, integration, and (if applicable) E2E tests for all backend components.
+*   **Deployment**: Prepare for deployment (Docker, K8s, CI/CD pipelines).
+*   **Documentation**: Generate and maintain API and system documentation.
+
+=== EXPECTED WORKFLOW (when applicable) ===
+*   **Understand Requirements**: Thoroughly analyze the specific task, its context within `{PROJECT_NAME}`, and relevant `{KEY_BACKEND_REQUIREMENTS}` or architectural guidelines from `{ARCHITECTURE_OVERVIEW}`.
+*   **Design Solution**: Outline your approach before coding. Consider edge cases and potential issues.
+*   **Implement**: Write code according to the design, following coding standards for `{TECH_STACK_BACKEND_NAME}`.
+*   **Test**: Implement relevant tests for your code.
+*   **Document**: Provide necessary documentation for your changes.
+*   **Use Tools Effectively**: Leverage provided `{TOOL_NAMES}` for code analysis, file operations, etc., following the ReAct format.
+
+{COMMON_CONTEXT}
+""" + RESPONSE_FORMAT_TEMPLATE
+
 # ============== WORKFLOW PROMPTS ==============
 TASKMASTER_PROMPT = """
 You are an AI Project Manager coordinating project: {PROJECT_NAME} (Slug: {PROJECT_NAME_SLUG})
@@ -943,9 +1000,10 @@ Parameters:
 *   Architecture Design -> `architect`
 *   API Design -> `api_designer`
 *   Code Implementation (Backend/General) -> `code_writer` (often as a "scribe" for other agents' generated code)
-*   Web UI Development -> `web_developer`
+*   Web UI Development -> `web_developer` (or specific web sub-agents like `page_structure_designer`, `component_generator`, etc.)
+*   Backend Development -> `backend_developer` (or specific backend sub-agents like `config_manager`, `database_model_designer`, etc.)
 *   Mobile App Development -> `mobile_developer`
-*   Testing -> `tester`
+*   Testing -> `tester` (or specific test writers like `testing_suite_generator` for backend, `test_writer` for web)
 *   Debugging -> `debugger`
 *   Code Navigation/Understanding (often used by other agents via their own tool calls) -> `search_ctags`, `get_symbol_context`, `read_file`
 
@@ -956,40 +1014,33 @@ Parameters:
 4.  **Design Architecture**: After planning, delegate to `architect`.
 5.  **Design APIs**: If backend/fullstack, after architecture, delegate to `api_designer`.
 6.  **Implement Tasks**:
-    *   **Code Generation Tasking**: For tasks requiring new code (UI, API logic, etc.), you MUST delegate to the appropriate specialized agent (e.g., `web_developer` for UI, `mobile_developer` for mobile apps). Their role is to generate and return the code as a string (often within a JSON structure).
-        *   Example `Action Input` for `web_developer`:
-            `{{ "task": "Generate HTML and CSS for the main landing page, including sections for About, Products, and Contact.", "context": {{ ...full current_project_data... }} }}`
-    *   **Receiving Generated Code**: When you receive generated code (e.g., an HTML string from `web_developer`, or OpenAPI JSON from `api_designer`):
+    *   **Code Generation Tasking**: For tasks requiring new code (UI, API logic, etc.), you MUST delegate to the appropriate specialized agent (e.g., `web_developer` for general web tasks, or a more specific sub-agent like `component_generator`; `backend_developer` for general backend tasks, or a specific sub-agent like `service_layer_builder`). Their role is to generate and return the code (often within a JSON structure).
+        *   Example `Action Input` for `web_developer` / `component_generator`:
+            `{{ "task": "Generate React components for the user profile page based on provided page structure and component specs.", "context": {{ ...full current_project_data..., "PAGE_STRUCTURE_JSON": "...", "COMPONENT_SPECS_JSON": "..." }} }}`
+    *   **Receiving Generated Code**: When you receive generated code:
         1.  You MUST determine the **correct, absolute file path** where this code should be saved.
-            *   Consult the project plan for specified target file paths.
-            *   Refer to the architectural directory structure (available in `current_project_data.architecture.architecture_design.diagram`).
-            *   Apply standard naming conventions for the language/framework if the filename isn't explicit.
-            *   Combine the project's root directory (`/workspace/{PROJECT_NAME_SLUG}`) with the determined relative path to get the absolute path.
-        2.  In your 'Thought' process, you MUST clearly state the generated code snippet (or a summary if very long) and the determined absolute file path.
+            *   Consult the project plan, architectural diagrams (`current_project_data.architecture.architecture_design.diagram`), and agent output (e.g., `file_name_suggestion` from web/backend sub-agents).
+            *   Combine the project's root directory (`/workspace/{PROJECT_NAME_SLUG}`) with the determined relative path.
+        2.  In your 'Thought' process, you MUST clearly state the generated code snippet (or a summary) and the determined absolute file path.
     *   **Delegating to `code_writer` (as Scribe)**:
-        1.  Once you have the `absolute_file_path` and the `file_content` (the generated code string), you MUST delegate the writing task to the `code_writer` agent.
-        2.  To do this, you MUST prepare a specific `ProjectContext` for `code_writer`. This context should be a *copy or subset* of your `current_project_data`, but critically, you MUST set/update the following two fields in the context you pass to `code_writer`:
-            *   `current_file_path`: (string) The absolute file path you determined.
-            *   `current_file_content`: (string) The actual code content to be written.
-        3.  The `task` description in your `Action Input` for `code_writer` MUST be simple, e.g., "Write the provided code to the specified file path."
-            *   Example `Action Input` for `code_writer`:
-                `{{ "task": "Write the provided code to the specified file path using the 'current_file_path' and 'current_file_content' from the context.", "context": {{ "project_name": "{PROJECT_NAME}", "project_name_slug": "{PROJECT_NAME_SLUG}", "current_dir": "/workspace/{PROJECT_NAME_SLUG}", "current_file_path": "/workspace/{PROJECT_NAME_SLUG}/src/components/MyComponent.js", "current_file_content": "...", ...other necessary minimal context... }} }}`
-                *(Note: The context passed to `code_writer` should ideally be the full `ProjectContext` object that has these fields set, ensuring it can access its own toolkit if needed. The example is illustrative of the key fields TaskMaster MUST set.)*
+        1.  Once you have the `absolute_file_path` and the `file_content`, you MUST delegate the writing task to the `code_writer` agent.
+        2.  Prepare `ProjectContext` for `code_writer`, critically setting:
+            *   `current_file_path`: (string) The absolute file path.
+            *   `current_file_content`: (string) The code content.
+        3.  The `task` for `code_writer` MUST be simple: "Write the provided code to the specified file path."
 7.  **Choose Next Agent**: Based on the plan and previous results, select the next appropriate agent from {TOOL_NAMES}.
-8.  **Validate Results**: Review agent outputs for quality and completeness. If unsatisfactory, provide feedback and re-delegate.
+8.  **Validate Results**: Review agent outputs. If unsatisfactory, provide feedback and re-delegate.
 9.  **Finalize**: Summarize project completion.
 
 === PROJECT CONTEXT MANAGEMENT (CRITICAL) ===
 **Project Context Persistence:**
-a.  You are responsible for maintaining the `current_project_data` (an in-memory dictionary holding all project information: analysis, plan, summary, tech stack, history, etc.).
-b.  You will be provided with the `{PROJECT_NAME_SLUG}` for the current project.
-c.  After each significant project phase or agent completion (e.g., after `ProjectAnalyzer` provides analysis, `TechNegotiator` confirms stack, `Planner` creates plan, `Architect` designs architecture, or a `CodeWriter` task results in a key file), you MUST update the `current_project_data` with the new information.
-d.  This includes updating the `last_updated` timestamp and adding a concise entry to `agent_history` within `current_project_data`. Each history entry MUST be an object with fields like `{{'agent_name': '...', 'timestamp': '...', 'action_summary': '...', 'output_reference': '...'}}`.
-    *   Example: After `CodeWriter` creates 'src/services/user_service.py', `action_summary` could be 'Implemented UserService class', `output_reference` 'src/services/user_service.py'.
-e.  Immediately after these updates, you MUST use the `write_project_context` tool to save the entire `current_project_data` to the project's dedicated `project_context.json` file.
+a.  Maintain `current_project_data` (in-memory dictionary: analysis, plan, summary, tech stack, history, etc.).
+b.  Provided with `{PROJECT_NAME_SLUG}`.
+c.  After significant phases/agent completions, MUST update `current_project_data` (new info, `last_updated` timestamp, `agent_history` entry: `{{'agent_name': '...', 'timestamp': '...', 'action_summary': '...', 'output_reference': '...'}}`).
+d.  Immediately after updates, MUST use `write_project_context` tool to save `current_project_data` to `project_context.json`.
     *   Example Action: `write_project_context`
-    *   Example Action Input: `{{ "project_name_slug": "{PROJECT_NAME_SLUG}", "context_data": {{ ... current_project_data ... }} }}` (You MUST ensure the actual `current_project_data` is passed here).
-f.  At the very beginning of a project, you SHOULD have used `read_project_context` to load any existing data. This saving instruction applies to updates *after* that initial load.
+    *   Example Action Input: `{{ "project_name_slug": "{PROJECT_NAME_SLUG}", "context_data": {{ ... current_project_data ... }} }}`
+e.  At start, use `read_project_context` to load existing data.
 
 Recent History:
 {HISTORY}
@@ -1072,39 +1123,6 @@ VERDICT: [ACCEPTED or REJECTED. This MUST be stated clearly.]
 FEEDBACK: [If REJECTED, provide specific, actionable improvement points. If ACCEPTED, this can be brief positive reinforcement.]
 """
 
-EXAMPLE_WORKFLOWS = {
-    "project_analyzer": """
-=== PROJECT ANALYSIS WORKFLOW EXAMPLE (Illustrative) ===
-Thought: I need to understand project requirements based on user input. The user wants a task management app with a React frontend. This implies a fullstack project.
-Action: project_analyzer_tool_not_directly_called_by_self_usually_TaskMaster_calls_this_agent
-Action Input: {"requirements": "Build task management app with React frontend, Node.js backend, and PostgreSQL database."}
-Observation: (Simulated output from ProjectAnalyzer agent execution)
-```json
-{
-  "project_type_confirmed": "fullstack",
-  "project_summary": "A task management application with a web interface for users to create, track, and manage tasks. It will feature a React-based frontend, a Node.js backend for API services, and a PostgreSQL database for persistent storage.",
-  "backend_needed": true,
-  "frontend_needed": true,
-  "mobile_needed": false,
-  "key_requirements": [
-    "User registration and authentication.",
-    "Ability to create, read, update, and delete tasks.",
-    "Task categorization and filtering.",
-    "User-friendly interface using React components."
-  ],
-  "suggested_tech_stack": {
-    "frontend": "React",
-    "backend": "Node.js/Express",
-    "database": "PostgreSQL"
-  }
-}
-```
-Final Answer: Project analysis complete. Output JSON generated with project type, summary, needs, requirements, and suggested stack.
-""",
-    # Other examples can be updated similarly if they are meant to be direct prompt snippets.
-    # For now, focusing on the main prompt structures.
-}
-
 # Agent prompt mapping
 AGENT_PROMPTS = {
     "project_analyzer": PROJECT_ANALYZER_PROMPT,
@@ -1117,58 +1135,62 @@ AGENT_PROMPTS = {
     "tester": TESTER_PROMPT,
     "debugger": DEBUGGER_PROMPT,
     "tech_negotiator": TECH_NEGOTIATOR_PROMPT,
+    "backend_developer": BACKEND_DEVELOPER_BLUEPRINT_PROMPT, # Corrected key
 }
 AGENT_PROMPTS.update(WEB_DEV_AGENT_PROMPTS)
+AGENT_PROMPTS.update(BACKEND_DEV_AGENT_PROMPTS)
+
 
 # ============== HELPER FUNCTIONS ==============
 def get_agent_prompt(agent_name, context):
     """Get formatted prompt with navigation integration and example workflow, adhering to new guidelines."""
+    # This context is now much larger and more comprehensive.
+    # It's crucial that all keys used by any prompt template are present here with a default.
     agent_context = {
-        'ROLE': context.get('role', ''),
-        'SPECIALTY': context.get('specialty', ''),
-        'PROJECT_NAME': context.get('project_name', 'Unnamed Project'),
-        'OBJECTIVE': context.get('objective', ''),
-        'PROJECT_TYPE': context.get('project_type', 'fullstack'), # General project type
-        'TECH_STACK_FRONTEND_NAME': context.get('tech_stack_frontend_name', 'Not Specified'),
-        'TECH_STACK_BACKEND_NAME': context.get('tech_stack_backend_name', 'Not Specified'),
-        'TECH_STACK_DATABASE_NAME': context.get('tech_stack_database_name', 'Not Specified'),
-        'TECH_STACK_FRONTEND': context.get('tech_stack_frontend', 'not specified'), # Specific tech value
-        'TECH_STACK_BACKEND': context.get('tech_stack_backend', 'not specified'),   # Specific tech value
-        'TECH_STACK_DATABASE': context.get('tech_stack_database', 'not specified'), # Specific tech value
-        'CURRENT_DIR': context.get('current_dir', '/project/workspace'), # More specific default
-        'PROJECT_SUMMARY': context.get('project_summary', 'No summary available'),
-        'ARCHITECTURE': context.get('architecture', 'No architecture defined'), # Could be a JSON string or dict
-        'ANALYSIS': context.get('analysis', {}), # Usually a dict
-        'PLAN': context.get('plan', 'No plan available'), # Could be a JSON string or dict
-        'MEMORIES': context.get('memories', 'No memories'),
-        'TOOL_NAMES': ", ".join(tool['name'] for tool in context.get('tools', []) if 'name' in tool), # Ensure it's a string
-        # Web Developer specific
-        'DESIGN_SYSTEM': context.get('design_system', 'No design system specified'),
-        'COMPONENT_SUMMARY': context.get('component_summary', 'No components documented'),
-        'API_ENDPOINTS': context.get('api_endpoints', 'No API documentation provided'), # Could be JSON string or dict
-        'STATE_MANAGEMENT': context.get('state_management', 'Default (e.g., Context API/useState)'),
-        'BREAKPOINTS': context.get('breakpoints', 'Mobile: 320px, Tablet: 768px, Desktop: 1024px'),
-        # Mobile Developer specific
-        'NAVIGATION': context.get('navigation', 'Basic stack navigation'),
-        'PLATFORM_SPECIFICS': context.get('platform_specifics', 'Standard iOS and Android behavior'),
-        # Debugger specific
-        'ERROR_REPORT': context.get('error_report', 'No error details provided'),
-        # CodeWriter specific
-        'CURRENT_FILE_PATH': context.get('current_file_path', 'not_specified.txt'),
-        'PROJECT_DIRECTORY_STRUCTURE': 'Project directory structure not yet defined or available.', # Default for CodeWriter
-        # API Designer specific
-        'PROJECT_DESCRIPTION': context.get('project_description', context.get('objective', 'No specific project description provided.')), # Fallback to objective
-        'ANALYSIS_SUMMARY_FOR_API_DESIGN': "Analysis summary not available.",
-        'ARCHITECTURE_SUMMARY_FOR_API_DESIGN': "Architecture summary not available.",
-        'PLAN_SUMMARY_FOR_API_DESIGN': "Plan summary not available.",
-        # Architect specific
-        'RELEVANT_TECH_STACK_LIST': "No relevant tech stack defined.",
-        'ANALYSIS_SUMMARY_FOR_ARCHITECTURE': "Analysis summary not available.",
-        'KEY_REQUIREMENTS_FOR_ARCHITECTURE': "Key requirements not available.",
-        # Tech Negotiator specific
-        'KEY_REQUIREMENTS': "Key requirements not available.",
-        # Web Dev Crew Specific (can be generalized or moved if other crews use them)
-        'USER_STORIES': context.get('USER_STORIES', 'N/A'), # Note: Keys for web_dev_prompts are already uppercase
+        # Base Agent Roles
+        'ROLE': context.get('ROLE', context.get('role', '')), # Allow both cases for now
+        'SPECIALTY': context.get('SPECIALTY', context.get('specialty', '')),
+        'PROJECT_NAME': context.get('PROJECT_NAME', context.get('project_name', 'Unnamed Project')),
+        'OBJECTIVE': context.get('OBJECTIVE', context.get('objective', '')),
+        'PROJECT_TYPE': context.get('PROJECT_TYPE', context.get('project_type', 'fullstack')),
+
+        # Common Context items
+        'CURRENT_DIR': context.get('CURRENT_DIR', context.get('current_dir', '/project/workspace')),
+        'PROJECT_SUMMARY': context.get('PROJECT_SUMMARY', context.get('project_summary', 'No summary available')),
+        'ARCHITECTURE': context.get('ARCHITECTURE', context.get('architecture', 'No architecture defined')),
+        'PLAN': context.get('PLAN', context.get('plan', 'No plan available')),
+        'MEMORIES': context.get('MEMORIES', context.get('memories', 'No memories')),
+        'TOOL_NAMES': ", ".join(tool['name'] for tool in context.get('TOOLS', context.get('tools', [])) if 'name' in tool),
+        'TOOLS': context.get('TOOLS', context.get('tools', [])), # List of tool dicts for TOOL_PROMPT_SECTION
+
+        # Tech Stack Names (ensure these are top-level for direct formatting in preambles)
+        'TECH_STACK_FRONTEND_NAME': context.get('TECH_STACK_FRONTEND_NAME', context.get('tech_stack_frontend_name', 'Not Specified')),
+        'TECH_STACK_BACKEND_NAME': context.get('TECH_STACK_BACKEND_NAME', context.get('tech_stack_backend_name', 'Not Specified')),
+        'TECH_STACK_DATABASE_NAME': context.get('TECH_STACK_DATABASE_NAME', context.get('tech_stack_database_name', 'Not Specified')),
+
+        # Tech Stack Values (can also be sourced from TECH_STACK dict if needed by specific logic)
+        'TECH_STACK_FRONTEND': context.get('TECH_STACK_FRONTEND', context.get('tech_stack_frontend', 'not specified')),
+        'TECH_STACK_BACKEND': context.get('TECH_STACK_BACKEND', context.get('tech_stack_backend', 'not specified')),
+        'TECH_STACK_DATABASE': context.get('TECH_STACK_DATABASE', context.get('tech_stack_database', 'not specified')),
+
+        # Analysis & Planning Data (can be complex dicts/JSON strings)
+        'ANALYSIS': context.get('ANALYSIS', context.get('analysis', {})),
+
+        # Agent-Specific or Task-Specific Inputs (ensure defaults for all expected placeholders)
+        'ERROR_REPORT': context.get('ERROR_REPORT', context.get('error_report', 'No error details provided')),
+        'CURRENT_FILE_PATH': context.get('CURRENT_FILE_PATH', context.get('current_file_path', 'not_specified.txt')),
+        'PROJECT_DIRECTORY_STRUCTURE': context.get('PROJECT_DIRECTORY_STRUCTURE', 'Project directory structure not yet defined.'),
+        'PROJECT_DESCRIPTION': context.get('PROJECT_DESCRIPTION', context.get('objective', 'No specific project description provided.')),
+        'ANALYSIS_SUMMARY_FOR_API_DESIGN': context.get('ANALYSIS_SUMMARY_FOR_API_DESIGN', "Analysis summary not available."),
+        'ARCHITECTURE_SUMMARY_FOR_API_DESIGN': context.get('ARCHITECTURE_SUMMARY_FOR_API_DESIGN', "Architecture summary not available."),
+        'PLAN_SUMMARY_FOR_API_DESIGN': context.get('PLAN_SUMMARY_FOR_API_DESIGN', "Plan summary not available."),
+        'RELEVANT_TECH_STACK_LIST': context.get('RELEVANT_TECH_STACK_LIST', "No relevant tech stack defined."),
+        'ANALYSIS_SUMMARY_FOR_ARCHITECTURE': context.get('ANALYSIS_SUMMARY_FOR_ARCHITECTURE', "Analysis summary not available."),
+        'KEY_REQUIREMENTS_FOR_ARCHITECTURE': context.get('KEY_REQUIREMENTS_FOR_ARCHITECTURE', "Key requirements not available."),
+        'KEY_REQUIREMENTS': context.get('KEY_REQUIREMENTS', "Key requirements not available."),
+
+        # Web Developer Crew Specific (from web_dev_prompts.py & FrontendSubAgent._enhance_prompt_context)
+        'USER_STORIES': context.get('USER_STORIES', 'N/A'),
         'EXISTING_PAGES_INFO': context.get('EXISTING_PAGES_INFO', 'N/A'),
         'DESIGN_SYSTEM_GUIDELINES': context.get('DESIGN_SYSTEM_GUIDELINES', 'N/A'),
         'PAGE_STRUCTURE_JSON': context.get('PAGE_STRUCTURE_JSON', '{}'),
@@ -1185,14 +1207,167 @@ def get_agent_prompt(agent_name, context):
         'FORM_HANDLER_LOGIC_JSON': context.get('FORM_HANDLER_LOGIC_JSON', '{}'),
         'STATE_MANAGEMENT_SETUP_JSON': context.get('STATE_MANAGEMENT_SETUP_JSON', '{}'),
         'EXISTING_TESTS_INFO': context.get('EXISTING_TESTS_INFO', 'N/A'),
+        'DESIGN_SYSTEM': context.get('DESIGN_SYSTEM', 'No design system specified'),
+        'COMPONENT_SUMMARY': context.get('COMPONENT_SUMMARY', 'No components documented'),
+        'API_ENDPOINTS': context.get('API_ENDPOINTS', 'No API documentation provided'),
+        'STATE_MANAGEMENT': context.get('STATE_MANAGEMENT', 'Default (e.g., Context API/useState)'),
+        'BREAKPOINTS': context.get('BREAKPOINTS', 'Mobile: 320px, Tablet: 768px, Desktop: 1024px'),
+        'NAVIGATION': context.get('NAVIGATION', 'Basic stack navigation'),
+        'PLATFORM_SPECIFICS': context.get('PLATFORM_SPECIFICS', 'Standard iOS and Android behavior'),
+
+        # Generic placeholders from web_dev_prompts generalization
+        'ITEM_NAME_SINGULAR': context.get('ITEM_NAME_SINGULAR', "Item"),
+        'ITEM_NAME_PLURAL': context.get('ITEM_NAME_PLURAL', "Items"),
+        'DATA_ENTITY_NAME_SINGULAR': context.get('DATA_ENTITY_NAME_SINGULAR', "Entry"), # Used by backend too
+        'DATA_ENTITY_NAME_PLURAL': context.get('DATA_ENTITY_NAME_PLURAL', "Entries"), # Used by backend too
+        'ITEMS_SLUG': context.get('ITEMS_SLUG', "items"),
+        'FORM_NAME': context.get('FORM_NAME', "DetailForm"),
+        'SUBMISSION_TYPE': context.get('SUBMISSION_TYPE', "DataSubmission"),
+        'PRIMARY_ACTION_DESCRIPTION': context.get('PRIMARY_ACTION_DESCRIPTION', "Submit Data"),
+        'FEATURE_NAME_GENERIC': context.get('FEATURE_NAME_GENERIC', "MainFeature"),
+        'FEATURE_NAME_LOWERCASE': context.get('FEATURE_NAME_LOWERCASE', "mainfeature"),
+        'MODULE_NAME_GENERIC': context.get('MODULE_NAME_GENERIC', "CoreModule"),
+        'COMPONENT_NAME_GENERIC': context.get('COMPONENT_NAME_GENERIC', "DisplayComponent"),
+        'PAGE_NAME_GENERIC': context.get('PAGE_NAME_GENERIC', "StandardPage"),
+        'CRITICAL_COMPONENT_EXAMPLE_NAME': context.get('CRITICAL_COMPONENT_EXAMPLE_NAME', "CriticalWidget"),
+
+        # Backend Developer Blueprint & Sub-agent placeholders
+        'ARCHITECTURE_OVERVIEW': context.get('ARCHITECTURE_OVERVIEW', 'N/A'),
+        'KEY_BACKEND_REQUIREMENTS': context.get('KEY_BACKEND_REQUIREMENTS', 'N/A'),
+        'EXISTING_BACKEND_CODE_INFO': context.get('EXISTING_BACKEND_CODE_INFO', 'N/A'),
+        'PROJECT_ROOT': context.get('PROJECT_ROOT', '/app'), # Backend prompts use this
+        'FILE_EXTENSION': context.get('FILE_EXTENSION', 'py'), # Backend prompts use this
+        'DB_URL_EXAMPLE': context.get('DB_URL_EXAMPLE', "postgresql://user:pass@host:port/dbname"),
+        'REDIS_URL_EXAMPLE': context.get('REDIS_URL_EXAMPLE', "redis://host:port"),
+        'JWT_SECRET_EXAMPLE': context.get('JWT_SECRET_EXAMPLE', "your-super-secret-jwt-key-example"),
+        'LOG_LEVEL_EXAMPLE': context.get('LOG_LEVEL_EXAMPLE', "info"),
+        'API_PORT_EXAMPLE': context.get('API_PORT_EXAMPLE', 4000),
+        'ENVIRONMENT_EXAMPLE': context.get('ENVIRONMENT_EXAMPLE', "development"),
+        'MODELS_DIR_PATH': context.get('MODELS_DIR_PATH', "src/models"),
+        'DATABASE_NAMING_CONVENTIONS': context.get('DATABASE_NAMING_CONVENTIONS', "snake_case_tables_and_columns"),
+        'KEY_DATA_ENTITIES_LIST': context.get('KEY_DATA_ENTITIES_LIST', "User,Product,Order"),
+        'ENTITY_RELATIONSHIPS_DESCRIPTION': context.get('ENTITY_RELATIONSHIPS_DESCRIPTION', "User has_many Orders, Order has_many OrderItems, Product is an OrderItem."),
+        'MODEL_DEFINITIONS_PATH': context.get('MODEL_DEFINITIONS_PATH', "src/models"),
+        'CURRENT_DB_SCHEMA_INFO': context.get('CURRENT_DB_SCHEMA_INFO', "No current schema info provided."),
+        'DESIRED_MODEL_STATE_INFO': context.get('DESIRED_MODEL_STATE_INFO', "No specific desired state info provided beyond models."),
+        'MIGRATIONS_DIR_PATH': context.get('MIGRATIONS_DIR_PATH', "src/migrations"),
+        'DAL_DIR_PATH': context.get('DAL_DIR_PATH', "src/repositories"),
+        'DATABASE_ERROR_TYPES': context.get('DATABASE_ERROR_TYPES', "sqlalchemy.exc.IntegrityError, sqlalchemy.exc.NoResultFound"),
+        'SERVICES_DIR_PATH': context.get('SERVICES_DIR_PATH', "src/services"),
+        'DAL_CLASSES_INFO': context.get('DAL_CLASSES_INFO', "UserRepository, ProductRepository available with standard CRUD methods."),
+        'DOMAIN_USE_CASES': context.get('DOMAIN_USE_CASES', "RegisterUser, CreateProduct, PlaceOrder"),
+        'INPUT_SCHEMA_DEFINITIONS_PATH': context.get('INPUT_SCHEMA_DEFINITIONS_PATH', "src/schemas"),
+        'BUSINESS_PROCESS_NAME': context.get('BUSINESS_PROCESS_NAME', "GenericProcess"),
+        'ITEM_NAME_SINGULAR': context.get('ITEM_NAME_SINGULAR', "Item"), # Already defined, but good to ensure it's here for backend
+        'METRIC_NAME': context.get('METRIC_NAME', "Value"),
+        'TRANSACTION_SCOPE': context.get('TRANSACTION_SCOPE', "REQUEST"),
+        'CACHE_TTL': context.get('CACHE_TTL', 300),
+        'NOTIFICATION_FLAG': context.get('NOTIFICATION_FLAG', "true"),
+        'SERVICE_LAYER_INFO': context.get('SERVICE_LAYER_INFO', "UserService, ProductService available."),
+        'API_ROUTE_DEFINITIONS': context.get('API_ROUTE_DEFINITIONS', "GET /products, POST /products, GET /products/{id}"),
+        'CONTROLLERS_DIR_PATH': context.get('CONTROLLERS_DIR_PATH', "src/controllers"),
+        'REQUEST_DTO_PATH': context.get('REQUEST_DTO_PATH', "src/dtos/request"),
+        'RESPONSE_DTO_PATH': context.get('RESPONSE_DTO_PATH', "src/dtos/response"),
+        'SHARED_ERROR_SCHEMAS_INFO': context.get('SHARED_ERROR_SCHEMAS_INFO', "Shared error schemas available in utils.errors."),
+        'AUTH_STRATEGY': context.get('AUTH_STRATEGY', "JWT"),
+        'USER_MODEL_PATH': context.get('USER_MODEL_PATH', "src/models/user.py"),
+        'AUTH_MODULE_PATH': context.get('AUTH_MODULE_PATH', "src/auth"),
+        'ROLE_DEFINITIONS': context.get('ROLE_DEFINITIONS', "ADMIN,USER,GUEST"),
+        'PERMISSION_DEFINITIONS': context.get('PERMISSION_DEFINITIONS', "create_item,read_item,update_item,delete_item"),
+        'PROTECTED_ROUTES_INFO': context.get('PROTECTED_ROUTES_INFO', "POST /admin/* requires ADMIN role."),
+        'CACHE_TYPE': context.get('CACHE_TYPE', "Redis"),
+        'CACHE_CONNECTION_URL_PLACEHOLDER': context.get('CACHE_CONNECTION_URL_PLACEHOLDER', "CACHE_URL"),
+        'CACHE_CLIENT_MODULE_PATH': context.get('CACHE_CLIENT_MODULE_PATH', "src/utils/cache_client"),
+        'SERVICE_METHODS_TO_CACHE': context.get('SERVICE_METHODS_TO_CACHE', "ProductService.get_all_products:300, UserService.get_user_by_id:3600"),
+        'CACHE_KEY_PREFIX': context.get('CACHE_KEY_PREFIX', "my_app_cache"),
+        'JOB_QUEUE_SYSTEM': context.get('JOB_QUEUE_SYSTEM', "Celery"),
+        'QUEUE_CONNECTION_URL_PLACEHOLDER': context.get('QUEUE_CONNECTION_URL_PLACEHOLDER', "CELERY_BROKER_URL"),
+        'WORKERS_DIR_PATH': context.get('WORKERS_DIR_PATH', "src/workers"),
+        'JOBS_DIR_PATH': context.get('JOBS_DIR_PATH', "src/jobs"),
+        'EXAMPLE_JOB_DEFINITIONS': context.get('EXAMPLE_JOB_DEFINITIONS', "send_confirmation_email(user_id, order_id),generate_nightly_report()"),
+        'DEFAULT_QUEUE_NAME': context.get('DEFAULT_QUEUE_NAME', "default"),
+        'DEFAULT_CONCURRENCY': context.get('DEFAULT_CONCURRENCY', 1),
+        'DEFAULT_RETRY_COUNT': context.get('DEFAULT_RETRY_COUNT', 3),
+        'MESSAGE_BROKER_SYSTEM': context.get('MESSAGE_BROKER_SYSTEM', "RabbitMQ"),
+        'BROKER_CONNECTION_URL_PLACEHOLDER': context.get('BROKER_CONNECTION_URL_PLACEHOLDER', "RABBITMQ_URL"),
+        'MESSAGING_MODULE_PATH': context.get('MESSAGING_MODULE_PATH', "src/messaging"),
+        'TOPICS_OR_EXCHANGES_TO_DEFINE': context.get('TOPICS_OR_EXCHANGES_TO_DEFINE', "order.created,user.updated"),
+        'SERIALIZATION_FORMAT': context.get('SERIALIZATION_FORMAT', "JSON"),
+        'CONSUMER_GROUP_ID_EXAMPLE': context.get('CONSUMER_GROUP_ID_EXAMPLE', "my-consumer-group"),
+        'STORAGE_SERVICE_TYPE': context.get('STORAGE_SERVICE_TYPE', "LocalFileSystem"),
+        'BUCKET_NAME_PLACEHOLDER': context.get('BUCKET_NAME_PLACEHOLDER', "MY_FILES_BUCKET"),
+        'STORAGE_CONFIG_PLACEHOLDERS': context.get('STORAGE_CONFIG_PLACEHOLDERS', "LOCAL_STORAGE_PATH"),
+        'STORAGE_MODULE_PATH': context.get('STORAGE_MODULE_PATH', "src/utils/storage_service"),
+        'EXAMPLE_USE_CASE': context.get('EXAMPLE_USE_CASE', "Storing user profile pictures."),
+        'EMAIL_SERVICE_PROVIDER': context.get('EMAIL_SERVICE_PROVIDER', "SMTP"),
+        'EMAIL_CONFIG_PLACEHOLDERS': context.get('EMAIL_CONFIG_PLACEHOLDERS', "SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASSWORD"),
+        'EMAIL_SERVICE_MODULE_PATH': context.get('EMAIL_SERVICE_MODULE_PATH', "src/services/email_service"),
+        'TEMPLATES_DIR_PATH': context.get('TEMPLATES_DIR_PATH', "src/templates/email"),
+        'EXAMPLE_EMAIL_TEMPLATES': context.get('EXAMPLE_EMAIL_TEMPLATES', "welcome:USER_NAME,ACTIVATION_LINK\npassword_reset:USER_NAME,RESET_URL"),
+        'LOGGING_LIBRARY': context.get('LOGGING_LIBRARY', "Python logging module"),
+        'ERROR_CLASSES_MODULE_PATH': context.get('ERROR_CLASSES_MODULE_PATH', "src/utils/errors"),
+        'LOGGER_CONFIG_MODULE_PATH': context.get('LOGGER_CONFIG_MODULE_PATH', "src/utils/logger_config"),
+        'LOG_LEVEL_PLACEHOLDER': context.get('LOG_LEVEL_PLACEHOLDER', "LOG_LEVEL"),
+        'LOG_FORMAT': context.get('LOG_FORMAT', "JSON"),
+        'LOG_DESTINATIONS': context.get('LOG_DESTINATIONS', "stdout,file:/app/logs/service.log"),
+        'METRICS_SYSTEM': context.get('METRICS_SYSTEM', "Prometheus"),
+        'HEALTH_CHECK_ENDPOINT_PATH': context.get('HEALTH_CHECK_ENDPOINT_PATH', "/healthz"),
+        'METRICS_ENDPOINT_PATH': context.get('METRICS_ENDPOINT_PATH', "/metrics"),
+        'MONITORING_MODULE_PATH': context.get('MONITORING_MODULE_PATH', "src/monitoring"),
+        'METRIC_PREFIX': context.get('METRIC_PREFIX', "app_"),
+        'SERVICE_NAME_FOR_METRICS': context.get('SERVICE_NAME_FOR_METRICS', "my_application"),
+        'SECURITY_MIDDLEWARE_PATH': context.get('SECURITY_MIDDLEWARE_PATH', "src/middleware/security"),
+        'INPUT_VALIDATION_STRATEGY': context.get('INPUT_VALIDATION_STRATEGY', "DTOs with Pydantic"),
+        'CSP_POLICY_EXAMPLE': context.get('CSP_POLICY_EXAMPLE', "default-src 'self'; script-src 'self'; object-src 'none';"),
+        'CORS_ALLOWED_ORIGINS_PLACEHOLDER': context.get('CORS_ALLOWED_ORIGINS_PLACEHOLDER', "CORS_ALLOWED_ORIGINS"),
+        'RATE_LIMIT_REQUESTS_PLACEHOLDER': context.get('RATE_LIMIT_REQUESTS_PLACEHOLDER', 100),
+        'RATE_LIMIT_WINDOW_SECONDS_PLACEHOLDER': context.get('RATE_LIMIT_WINDOW_SECONDS_PLACEHOLDER', 60),
+        'DAL_CODE_PATH': context.get('DAL_CODE_PATH', "src/repositories"),
+        'SERVICE_CODE_PATH': context.get('SERVICE_CODE_PATH', "src/services"),
+        'SLOW_QUERY_LOGS': context.get('SLOW_QUERY_LOGS', "No slow query logs provided."),
+        'MAX_QUERY_TIME_MS_THRESHOLD': context.get('MAX_QUERY_TIME_MS_THRESHOLD', 500),
+        'BATCH_SIZE_EXAMPLE': context.get('BATCH_SIZE_EXAMPLE', 100),
+        'CONTROLLER_CODE_PATH': context.get('CONTROLLER_CODE_PATH', "src/controllers"),
+        'EXISTING_OPENAPI_SPEC_PATH': context.get('EXISTING_OPENAPI_SPEC_PATH', "docs/openapi.json"),
+        'DOCS_OUTPUT_PATH': context.get('DOCS_OUTPUT_PATH', "docs"),
+        'API_TITLE': context.get('API_TITLE', f"{context.get('project_name', 'Unnamed Project')} API"),
+        'API_VERSION': context.get('API_VERSION', "1.0.0"),
+        'CONTACT_EMAIL_EXAMPLE': context.get('CONTACT_EMAIL_EXAMPLE', "devteam@example.com"),
+        'TESTING_FRAMEWORK': context.get('TESTING_FRAMEWORK', "PyTest"),
+        'TESTS_DIR_PATH': context.get('TESTS_DIR_PATH', "tests"),
+        'TEST_DATA_EXAMPLES': context.get('TEST_DATA_EXAMPLES', "{ \"user_email\": \"test@example.com\" }"),
+        'MOCKING_STRATEGY_GUIDANCE': context.get('MOCKING_STRATEGY_GUIDANCE', "Use unittest.mock.patch for external dependencies."),
+        'BASE_IMAGE_PLACEHOLDER': context.get('BASE_IMAGE_PLACEHOLDER', "python:3.11-slim"),
+        'APPLICATION_PORT_PLACEHOLDER': context.get('APPLICATION_PORT_PLACEHOLDER', "API_PORT"),
+        'DOCKERFILE_PATH': context.get('DOCKERFILE_PATH', "Dockerfile"),
+        'K8S_MANIFESTS_PATH': context.get('K8S_MANIFESTS_PATH', "k8s"),
+        'CI_CD_CONFIG_PATH': context.get('CI_CD_CONFIG_PATH', ".github/workflows/main.yml"),
+        'DEPLOYMENT_NAME_PLACEHOLDER': context.get('DEPLOYMENT_NAME_PLACEHOLDER', f"{context.get('project_name', 'app')}-service"),
+        'DOCKER_IMAGE_NAME_PLACEHOLDER': context.get('DOCKER_IMAGE_NAME_PLACEHOLDER', f"my-registry/{context.get('project_name', 'app')}"),
+        'IMAGE_TAG_PLACEHOLDER': context.get('IMAGE_TAG_PLACEHOLDER', "latest"),
+        'K8S_REPLICAS_PLACEHOLDER': context.get('K8S_REPLICAS_PLACEHOLDER', 2),
+        'BACKUP_SCRIPT_PATH': context.get('BACKUP_SCRIPT_PATH', "scripts/backup.sh"),
+        'CRON_CONFIG_PATH': context.get('CRON_CONFIG_PATH', "/etc/cron.d/app_backups"),
+        'DB_BACKUP_COMMAND': context.get('DB_BACKUP_COMMAND', "pg_dump -U {{DB_USER}} -h {{DB_HOST}} {{DB_NAME}} > backup.sql"),
+        'BACKUP_STORAGE_INFO': context.get('BACKUP_STORAGE_INFO', "Upload to local path /var/backups/"),
+        'LOG_ROTATION_STRATEGY': context.get('LOG_ROTATION_STRATEGY', "Use logrotate system utility."),
+        'CRON_SCHEDULE_BACKUP_EXAMPLE': context.get('CRON_SCHEDULE_BACKUP_EXAMPLE', "0 2 * * *"),
+        'BACKUP_RETENTION_DAYS_EXAMPLE': context.get('BACKUP_RETENTION_DAYS_EXAMPLE', 7),
     }
 
-    # Populate COMMON_CONTEXT (can be complex, handle with care)
-    # For project_analyzer, COMMON_CONTEXT is simpler (just initial tech stack)
+    # Ensure all values are strings for .format(), converting dicts/lists to JSON strings
+    for key, value in agent_context.items():
+        if isinstance(value, (dict, list)) and key not in ['TOOLS', 'TOOL_NAMES']: # TOOLS is list of dicts, TOOL_NAMES is list of strings for specific template part
+            try:
+                agent_context[key] = json.dumps(value, indent=2)
+            except TypeError: # In case of non-serializable objects, fallback to string
+                agent_context[key] = str(value)
+        elif not isinstance(value, str) and key not in ['TOOLS', 'TOOL_NAMES']: # For other non-string types
+             agent_context[key] = str(value)
+
+
+    # Populate COMMON_CONTEXT
     if agent_name == "project_analyzer":
-        # common_context for project_analyzer is a JSON string of initial tech preferences
-        # These values are typically passed into get_agent_prompt via the main `context` argument
-        # and then picked up by agent_context['TECH_STACK_FRONTEND'], etc.
         initial_stack_prefs = {
             "frontend": agent_context['TECH_STACK_FRONTEND'],
             "backend": agent_context['TECH_STACK_BACKEND'],
@@ -1200,42 +1375,48 @@ def get_agent_prompt(agent_name, context):
         }
         agent_context['COMMON_CONTEXT'] = json.dumps(initial_stack_prefs, indent=4)
     else:
-        # For other agents, COMMON_CONTEXT is more detailed
-        # Ensure sub-fields are strings, not complex objects, if COMMON_CONTEXT_TEMPLATE expects strings
         architecture_display = agent_context['ARCHITECTURE']
-        if isinstance(architecture_display, dict): # Basic serialization if it's a dict
+        if isinstance(architecture_display, dict):
             architecture_display = json.dumps(architecture_display.get('description', architecture_display), indent=2, ensure_ascii=False)
             if len(architecture_display) > 1000: architecture_display = architecture_display[:1000] + "..."
-        
+
         plan_display = agent_context['PLAN']
-        if isinstance(plan_display, dict): # Basic serialization if it's a dict
+        if isinstance(plan_display, dict):
             plan_display = json.dumps(plan_display.get('description', plan_display), indent=2, ensure_ascii=False)
             if len(plan_display) > 1000: plan_display = plan_display[:1000] + "..."
 
         agent_context['COMMON_CONTEXT'] = COMMON_CONTEXT_TEMPLATE.format(
-            CURRENT_DIR=agent_context['CURRENT_DIR'],
-            PROJECT_SUMMARY=str(agent_context['PROJECT_SUMMARY']), # Ensure string
-            ARCHITECTURE=str(architecture_display), # Ensure string
-            PLAN=str(plan_display), # Ensure string
-            MEMORIES=str(agent_context['MEMORIES']) # Ensure string
+            CURRENT_DIR=str(agent_context['CURRENT_DIR']),
+            PROJECT_SUMMARY=str(agent_context['PROJECT_SUMMARY']),
+            ARCHITECTURE=str(architecture_display),
+            PLAN=str(plan_display),
+            MEMORIES=str(agent_context['MEMORIES'])
         )
 
-    # Agent-specific context preparations (most are now covered by the extended agent_context population)
-    if agent_name == "tech_negotiator": # Requires KEY_REQUIREMENTS to be a string
-        analysis_data = context.get("analysis", {})
+    # Agent-specific context preparations that require logic beyond simple get
+    if agent_name == "tech_negotiator":
+        analysis_data = agent_context.get("ANALYSIS", {})
         key_reqs_list = analysis_data.get("key_requirements", [])
         agent_context['KEY_REQUIREMENTS'] = "\n".join([f"- {req}" for req in key_reqs_list]) if isinstance(key_reqs_list, list) else "Key requirements not available or not in list format."
 
-    if agent_name == "api_designer": # Requires specific summaries
-        analysis_data = context.get("analysis", {})
+    if agent_name == "api_designer":
+        analysis_data = agent_context.get("ANALYSIS", {})
         key_reqs_list = analysis_data.get("key_requirements", [])
         agent_context['ANALYSIS_SUMMARY_FOR_API_DESIGN'] = "\n".join([f"- {req}" for req in key_reqs_list]) if isinstance(key_reqs_list, list) else "Key requirements not available."
 
-        arch_data = context.get('architecture', {})
-        arch_desc = arch_data.get('description', str(arch_data) if isinstance(arch_data, dict) else arch_data if isinstance(arch_data, str) else "N/A")
-        agent_context['ARCHITECTURE_SUMMARY_FOR_API_DESIGN'] = (str(arch_desc)[:500] + "...") if len(str(arch_desc)) > 500 else str(arch_desc)
+        arch_data_str = agent_context.get('ARCHITECTURE', '{}')
+        try:
+            arch_data = json.loads(arch_data_str) if isinstance(arch_data_str, str) else arch_data_str
+        except json.JSONDecodeError:
+            arch_data = {}
+        arch_desc_str = arch_data.get('description', str(arch_data)) if isinstance(arch_data, dict) else str(arch_data)
+        agent_context['ARCHITECTURE_SUMMARY_FOR_API_DESIGN'] = (arch_desc_str[:500] + "...") if len(arch_desc_str) > 500 else arch_desc_str
 
-        plan_data = context.get('plan', {})
+        plan_data_str = agent_context.get('PLAN', '{}')
+        try:
+            plan_data = json.loads(plan_data_str) if isinstance(plan_data_str, str) else plan_data_str
+        except json.JSONDecodeError:
+            plan_data = {}
         plan_summary_list = []
         if isinstance(plan_data, dict) and 'milestones' in plan_data and isinstance(plan_data['milestones'], list):
             for i, milestone in enumerate(plan_data['milestones']):
@@ -1244,10 +1425,15 @@ def get_agent_prompt(agent_name, context):
         agent_context['PLAN_SUMMARY_FOR_API_DESIGN'] = "\n".join(plan_summary_list) if plan_summary_list else "Plan details not available."
 
 
-    if agent_name == "architect": # Requires RELEVANT_TECH_STACK_LIST and specific summaries
+    if agent_name == "architect":
         tech_lines = []
-        # Use ANALYSIS from agent_context as it's already populated
-        project_type_confirmed = agent_context['ANALYSIS'].get('project_type_confirmed', agent_context['PROJECT_TYPE'])
+        analysis_data_str = agent_context.get('ANALYSIS', '{}')
+        try:
+            analysis_dict = json.loads(analysis_data_str) if isinstance(analysis_data_str, str) else analysis_data_str
+        except json.JSONDecodeError:
+            analysis_dict = {}
+
+        project_type_confirmed = analysis_dict.get('project_type_confirmed', agent_context['PROJECT_TYPE'])
 
         fe_name = agent_context['TECH_STACK_FRONTEND_NAME']
         if fe_name and fe_name != 'Not Specified' and project_type_confirmed in ['fullstack', 'web', 'mobile']:
@@ -1260,74 +1446,34 @@ def get_agent_prompt(agent_name, context):
             tech_lines.append(f"- Database: {db_name}")
         agent_context['RELEVANT_TECH_STACK_LIST'] = "\n".join(tech_lines) if tech_lines else "  (No specific core technologies defined for the project type)"
 
-        analysis_data = agent_context['ANALYSIS']
         agent_context['ANALYSIS_SUMMARY_FOR_ARCHITECTURE'] = f"Project Type Confirmed: {project_type_confirmed}. Key Focus: Guiding architecture based on requirements."
-        key_reqs_list = analysis_data.get("key_requirements", [])
+        key_reqs_list = analysis_dict.get("key_requirements", [])
         agent_context['KEY_REQUIREMENTS_FOR_ARCHITECTURE'] = "\n".join([f"- {req}" for req in key_reqs_list]) if isinstance(key_reqs_list, list) else "Key requirements not available."
 
-    if agent_name == "code_writer": # Requires PROJECT_DIRECTORY_STRUCTURE
-        arch_data = context.get('architecture')
+    if agent_name == "code_writer":
+        arch_data_str = agent_context.get('ARCHITECTURE', '{}')
+        try:
+            arch_data = json.loads(arch_data_str) if isinstance(arch_data_str, str) else arch_data_str
+        except json.JSONDecodeError:
+            arch_data = {}
         if isinstance(arch_data, dict) and isinstance(arch_data.get('architecture_design'), dict):
             agent_context['PROJECT_DIRECTORY_STRUCTURE'] = arch_data['architecture_design'].get('diagram', 'Project directory structure not detailed in architecture.')
 
     base_prompt_template = AGENT_PROMPTS.get(agent_name)
     if not base_prompt_template:
+        # Fallback or error if agent_name is not in AGENT_PROMPTS (e.g. a sub-agent name)
+        # This part of the logic might need adjustment if sub-agents use distinct prompt variables
+        # not directly in AGENT_PROMPTS. For now, assuming all are findable.
         return f"Error: Prompt for agent '{agent_name}' not found. AGENT_PROMPTS keys: {list(AGENT_PROMPTS.keys())}"
     
     try:
-        # All keys in agent_context are already UPPER_SNAKE_CASE
         base_prompt = base_prompt_template.format(**agent_context)
     except KeyError as e:
-        # This error means a placeholder in the template string was not found in agent_context
-        # This can happen if a new placeholder is added to a template but not to the agent_context dict above
         return f"Error formatting prompt for {agent_name}: Missing key {e}. Available keys in agent_context: {list(agent_context.keys())}"
     except Exception as e_format:
-         return f"Error formatting prompt for {agent_name}: {e_format}. Context dump (partial): {str(agent_context)[:500]}"
+         return f"Error formatting prompt for {agent_name}: {e_format}. Context dump (partial): {str(agent_context)[:1000]}"
 
-    tool_descriptions = "\n".join(
-        f"- {tool.get('name', 'N/A')}: {tool.get('description', 'No description')}"
-        for tool in context.get('tools', [])
-    ).strip()
-    
-    ctags_tips_content = NAVIGATION_TIPS
-    ctags_specific = ""
-    if any(t.get('name', '').startswith('ctags') for t in context.get('tools', [])):
-        ctags_specific = "\n=== CTAGS SPECIALIZATION ===\nREQUIRED: You MUST prefer ctags for symbol navigation over text search where applicable."
-    
-    tool_section = TOOL_PROMPT_SECTION.format(
-        TOOL_DESCRIPTIONS=tool_descriptions if tool_descriptions else "No tools available for description.",
-        CTAGS_TIPS=ctags_tips_content + ctags_specific,
-        CURRENT_DIR=agent_context['CURRENT_DIR']
-    )
-    
-    final_prompt = base_prompt
-    # Append tool_section only if the base_prompt itself (via RESPONSE_FORMAT_TEMPLATE) doesn't already include it.
-    # The current structure is that RESPONSE_FORMAT_TEMPLATE is part of the main agent prompts.
-    # TOOL_PROMPT_SECTION is a separate block of rules.
-    # We should append TOOL_PROMPT_SECTION if the agent is expected to use tools,
-    # which is true for most agents except direct JSON output ones like project_analyzer.
-    # RESPONSE_FORMAT_TEMPLATE already includes {TOOL_NAMES}, so it's aware of tools.
-    # TOOL_PROMPT_SECTION provides the descriptions and rules.
-
-    # Check if the prompt uses RESPONSE_FORMAT_TEMPLATE (which implies tool usage)
-    # and doesn't already contain the detailed tool descriptions.
-    if "=== RESPONSE REQUIREMENTS ===" in final_prompt and "=== AVAILABLE TOOLS ===" not in final_prompt :
-        # Insert tool_section before "=== RESPONSE REQUIREMENTS ===" if possible, or append
-        # For simplicity, appending if not already part of a more complex combined template.
-        # Most specific agent prompts now end with RESPONSE_FORMAT_TEMPLATE.
-        # The ideal place for TOOL_PROMPT_SECTION is often just before RESPONSE_FORMAT_TEMPLATE.
-        # However, since AGENT_ROLE_TEMPLATE, COMMON_CONTEXT_TEMPLATE etc. are concatenated,
-        # and then RESPONSE_FORMAT_TEMPLATE is added at the end of the specific agent prompt,
-        # we can append TOOL_PROMPT_SECTION before RESPONSE_FORMAT_TEMPLATE for those.
-        # This is already handled by the structure of web_dev_prompts which append TOOL_PROMPT_SECTION then RESPONSE_FORMAT_TEMPLATE
-        # For general prompts not following that specific structure:
-        if agent_name not in ["project_analyzer", "tech_negotiator", # Direct JSON output
-                               "page_structure_designer", "component_generator", "api_hook_writer",
-                               "form_handler", "state_manager", "style_engineer", "layout_designer",
-                               "error_boundary_writer", "test_writer"]: # These have it from web_dev_prompts
-             final_prompt += "\n" + tool_section
-
-    return final_prompt
+    return base_prompt
 
 def get_taskmaster_prompt(context):
     """Get prompt for TaskMaster coordinator, using UPPER_SNAKE_CASE."""

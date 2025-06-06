@@ -3,15 +3,14 @@ agents.frontend_build_crew package initializer.
 Exports all symbols from the modules in this directory,
 and the FrontendSubAgent base class.
 """
-import json
 
 # Imports for FrontendSubAgent
-from agents.base_agent import Agent
-from utils.general_utils import Logger
-from utils.database import Database
-from configs.global_config import ModelConfig, GeminiConfig
-from prompts.general_prompts import get_agent_prompt
-from utils.context_handler import ProjectContext
+from agents.base_agent import Agent # CORRECTED
+from utils.general_utils import Logger # CORRECTED
+from utils.database import Database # CORRECTED
+from configs.global_config import ModelConfig, GeminiConfig # CORRECTED
+from prompts.general_prompts import get_agent_prompt # ADDED
+from utils.context_handler import ProjectContext # ADDED
 
 # Relative imports for sub-modules
 from . import api_hook_writer
@@ -40,134 +39,97 @@ class FrontendSubAgent(Agent):
         Main execution method for a sub-agent.
         Called by FrontendCrewRunner.
         'crew_inputs' contains outputs from previous sub-agents in the crew.
+        This method is expected to prepare a prompt, call the LLM (likely via super().perform_task or directly _call_model),
+        and then parse the response, returning a dictionary.
         """
-        self.logger.log(f"[{self.name}] Executing run method with crew_inputs keys: {list(crew_inputs.keys()) if crew_inputs else 'None'}", self.role)
+        self.logger.log(f"[{self.name}] Executing run method with inputs: {crew_inputs.keys() if crew_inputs else 'None'}", self.role)
+
+        # Sub-agents will override this to use crew_inputs to build their specific prompt.
+        # For the base class, we'll just log and call the original perform_task logic
+        # which doesn't use 'crew_inputs'. Specific sub-agents MUST tailor this.
+
+        # The existing Agent.perform_task generates a prompt from project_context.
+        # If sub-agents need to inject 'crew_inputs' into their prompts, they'll
+        # need to override 'run', prepare a custom prompt string using crew_inputs,
+        # and then call self._call_model(custom_prompt_str) followed by self._parse_response().
+        # Or, they could modify project_context temporarily (less ideal).
+
+        # For this refactoring, let's assume sub-agents will override `run` and handle prompt generation.
+        # If a sub-agent *doesn't* override `run`, this base implementation would just run like a normal Agent.
+        # This provides backward compatibility if a sub-agent doesn't need explicit inputs.
+
+        # This base `run` method will now directly call the LLM interaction logic.
+        # It needs to construct the prompt using get_agent_prompt.
+        # The Agent.perform_task() logic is being partially replicated/adapted here.
 
         analysis_data = project_context.analysis.model_dump() if project_context.analysis else {}
-
         prompt_render_context = {
-            'ROLE': self.role,
-            'SPECIALTY': self.role,
-            'PROJECT_NAME': project_context.project_name,
-            'OBJECTIVE': project_context.objective or "",
-            'PROJECT_TYPE': project_context.analysis.project_type_confirmed if project_context.analysis else project_context.project_type,
-            'CURRENT_DIR': project_context.current_dir or "/",
-            'PROJECT_SUMMARY': project_context.project_summary or "",
-            'ARCHITECTURE': project_context.architecture or "",
-            'PLAN': project_context.plan or "",
-            'MEMORIES': project_context.project_summary or "No specific memories retrieved.",
-            'TOOL_NAMES': [tool['name'] for tool in self.tools],
-            'TOOLS': self.tools,
-            'ANALYSIS': analysis_data,
-            'CURRENT_CODE_SNIPPET': project_context.current_code_snippet or "",
-            'ERROR_REPORT': project_context.error_report or "",
-            'TECH_STACK': project_context.tech_stack.model_dump() if project_context.tech_stack else {},
+            'role': self.role,
+            'specialty': self.role, # Could be more specific if sub-agent has a specialty
+            'project_name': project_context.project_name,
+            'objective': project_context.objective or "",
+            'project_type': project_context.analysis.project_type_confirmed if project_context.analysis else project_context.project_type,
+            'current_dir': project_context.current_dir or "/",
+            'project_summary': project_context.project_summary or "",
+            'architecture': project_context.architecture or "",
+            'plan': project_context.plan or "",
+            'memories': project_context.project_summary or "No specific memories retrieved.",
+            'tool_names': [tool['name'] for tool in self.tools],
+            'tools': self.tools, # For tool usage if any
+            'analysis': analysis_data,
+            'current_code_snippet': project_context.current_code_snippet or "",
+            'error_report': project_context.error_report or "",
+            'tech_stack': project_context.tech_stack.model_dump() if project_context.tech_stack else {},
+            # Add crew_inputs to the prompt context so sub-agents can use them in their prompts
+            'crew_inputs': crew_inputs if crew_inputs else {},
         }
 
+        # Allow specific sub-agents to add more to prompt_render_context
         prompt_render_context = self._enhance_prompt_context(prompt_render_context, project_context, crew_inputs)
 
-        generated_prompt_str = get_agent_prompt(self.name, prompt_render_context)
+        generated_prompt_str = get_agent_prompt(self.name, prompt_render_context) # self.name is sub-agent name
 
         self.logger.log(f"[{self.name}] Starting task with model {self.current_model}", self.role)
 
-        if self.tools:
+        if self.tools: # Assuming sub-agents might use tools
             response_content = self._call_model_with_tools(generated_prompt_str)
         else:
             response_content = self._call_model(generated_prompt_str)
 
         parsed_result = self._parse_response(response_content, project_context)
+        # The 'structured_output' key is populated by _parse_response if successful.
         return parsed_result
 
     def _enhance_prompt_context(self, context: dict, project_context: ProjectContext, crew_inputs: dict = None) -> dict:
         """
-        Enhances the prompt context with specific details required by Web Development agent prompts,
-        ensuring keys are in UPPER_SNAKE_CASE and values are appropriately formatted (JSON strings for complex types).
+        Placeholder for sub-agents to add specific details to their prompt rendering context.
+        This method can be overridden by each sub-agent.
         """
-        if crew_inputs is None:
-            crew_inputs = {}
-
-        # Map from crew_inputs (outputs of previous agents)
-        page_structure = crew_inputs.get('page_structure')
-        context['PAGE_STRUCTURE_JSON'] = json.dumps(page_structure) if isinstance(page_structure, (dict, list)) else str(page_structure or '{}')
-
-        components_output = crew_inputs.get('components_output')
-        context['COMPONENT_SPECS_JSON'] = json.dumps(components_output) if isinstance(components_output, (dict, list)) else str(components_output or '{}')
-
-        api_hooks = crew_inputs.get('api_hooks')
-        context['API_HOOKS_CODE'] = json.dumps(api_hooks) if isinstance(api_hooks, (dict, list)) else str(api_hooks or 'N/A')
-
-        forms = crew_inputs.get('forms')
-        context['FORM_HANDLER_LOGIC_JSON'] = json.dumps(forms) if isinstance(forms, (dict, list)) else str(forms or '{}')
-
-        state_management = crew_inputs.get('state_management')
-        context['STATE_MANAGEMENT_SETUP_JSON'] = json.dumps(state_management) if isinstance(state_management, (dict, list)) else str(state_management or '{}')
-
-        styling_output = crew_inputs.get('styling_output')
-        # Try to get detailed style guide summary from styling_output first, then from project_context
-        style_guide_from_crew = styling_output.get('styling_strategy', {}).get('justification') if isinstance(styling_output, dict) else None
-        context['STYLE_GUIDE_SUMMARY'] = str(style_guide_from_crew or project_context.style_guide_summary or "General responsive design principles apply.")
-
-        layout_output = crew_inputs.get('layout_output')
-        context['LAYOUT_INFO_JSON'] = json.dumps(layout_output) if isinstance(layout_output, (dict, list)) else str(layout_output or '{}')
-
-        # Populate from project_context (these are generally initial project settings or broader contexts)
-        context['TECH_STACK_FRONTEND_NAME'] = project_context.tech_stack.frontend if project_context.tech_stack and project_context.tech_stack.frontend else "Not Specified"
-
-        context['DESIGN_SYSTEM_GUIDELINES'] = str(project_context.design_system_guidelines or "Standard design principles and common sense apply.")
-        context['EXISTING_COMPONENTS_INFO'] = str(project_context.existing_components_info or "No existing components listed.")
-
-        api_specs_data = project_context.api_specs
-        context['API_SPECIFICATIONS_JSON'] = json.dumps(api_specs_data) if isinstance(api_specs_data, (dict, list)) else str(api_specs_data or '{}')
-
-        context['EXISTING_HOOKS_INFO'] = str(project_context.existing_hooks_info or "No existing API hooks listed.")
-        context['VALIDATION_RULES_INFO'] = str(project_context.validation_rules_info or "Standard validation rules apply (e.g., required fields, email format).")
-        context['EXISTING_STATE_MGMT_INFO'] = str(project_context.existing_state_mgmt_info or "No existing state management info; choose based on framework and complexity.")
-        context['EXISTING_STYLING_INFO'] = str(project_context.existing_styling_info or "No existing styling setup; choose based on framework and design system.")
-        context['LOGGING_SERVICE_INFO'] = str(project_context.logging_service_info or "Log errors to console by default.")
-        context['EXISTING_TESTS_INFO'] = str(project_context.existing_tests_info or f"Use Jest and React Testing Library (or equivalent for {context['TECH_STACK_FRONTEND_NAME']}) by default.")
-
-        # Specific context for PageStructureDesigner
-        key_requirements_list = project_context.analysis.key_requirements if project_context.analysis and project_context.analysis.key_requirements else []
-        context['KEY_REQUIREMENTS'] = "\n".join(key_requirements_list) if key_requirements_list else "No specific key requirements provided for page structure."
-        context['USER_STORIES'] = str(project_context.user_stories or "No user stories provided.")
-        context['EXISTING_PAGES_INFO'] = str(project_context.existing_pages_info or "No existing pages information provided.")
-
-        # New generic placeholders (sourced from crew_inputs, then project_context, then default)
-        context['ITEM_NAME_SINGULAR'] = str(crew_inputs.get('item_name_singular', getattr(project_context, 'generic_item_name_singular', "Item")))
-        context['ITEM_NAME_PLURAL'] = str(crew_inputs.get('item_name_plural', getattr(project_context, 'generic_item_name_plural', "Items")))
-        context['DATA_ENTITY_NAME_SINGULAR'] = str(crew_inputs.get('data_entity_name_singular', getattr(project_context, 'generic_data_entity_singular', "Entry")))
-        context['DATA_ENTITY_NAME_PLURAL'] = str(crew_inputs.get('data_entity_name_plural', getattr(project_context, 'generic_data_entity_plural', "Entries")))
-        context['ITEMS_SLUG'] = str(crew_inputs.get('items_slug', getattr(project_context, 'generic_items_slug', "items")))
-        context['FORM_NAME'] = str(crew_inputs.get('form_name', getattr(project_context, 'generic_form_name', "DetailForm")))
-        context['SUBMISSION_TYPE'] = str(crew_inputs.get('submission_type', getattr(project_context, 'generic_submission_type', "DataSubmission")))
-        context['PRIMARY_ACTION_DESCRIPTION'] = str(crew_inputs.get('primary_action_description', getattr(project_context, 'generic_primary_action_desc', "Submit Data")))
-        context['FEATURE_NAME_GENERIC'] = str(crew_inputs.get('feature_name_generic', getattr(project_context, 'generic_feature_name', "MainFeature")))
-        context['FEATURE_NAME_LOWERCASE'] = str(crew_inputs.get('feature_name_lowercase', getattr(project_context, 'generic_feature_name_lc', "mainfeature")))
-        context['MODULE_NAME_GENERIC'] = str(crew_inputs.get('module_name_generic', getattr(project_context, 'generic_module_name', "CoreModule")))
-        context['COMPONENT_NAME_GENERIC'] = str(crew_inputs.get('component_name_generic', getattr(project_context, 'generic_component_name', "DisplayComponent")))
-        context['PAGE_NAME_GENERIC'] = str(crew_inputs.get('page_name_generic', getattr(project_context, 'generic_page_name', "StandardPage")))
-        context['CRITICAL_COMPONENT_EXAMPLE_NAME'] = str(crew_inputs.get('critical_component_example_name', getattr(project_context, 'generic_critical_component_name', "CriticalWidget")))
-
-        context['ROLE'] = self.role
-
-        self.logger.log(f"[{self.name}] Enhanced prompt context. Keys: {list(context.keys())}", self.role)
+        # Example: a sub-agent might want to unpack crew_inputs further
+        # context['specific_input_needed'] = crew_inputs.get('relevant_key_from_previous_step')
         return context
 
     def _parse_response(self, response_text: str, project_context: ProjectContext) -> dict:
+        # This method is inherited from Agent and potentially overridden here or in specific sub-agents.
+        # The base Agent._parse_response already handles basic JSON extraction.
+        # FrontendSubAgent's previous override for 'structured_output' is good.
         self.logger.log(f"[{self.name}] Parsing response in FrontendSubAgent _parse_response", self.role)
-        parsed_output = super()._parse_response(response_text, project_context)
+        parsed_output = super()._parse_response(response_text, project_context) # Calls Agent._parse_response
 
         if parsed_output['status'] == 'complete':
             if 'parsed_json_content' in parsed_output:
                 parsed_output['structured_output'] = parsed_output['parsed_json_content']
                 self.logger.log(f"[{self.name}] JSON content set as structured_output.", self.role)
-            elif 'raw_response' in parsed_output and not parsed_output.get('structured_output'):
-                if self.name in ["api_hook_writer", "state_manager", "style_engineer"]:
-                    self.logger.log(f"[{self.name}] WARNING: No JSON block found. Agent is expected to output JSON. Using raw response. This might cause issues.", self.role, level="WARNING")
-                    parsed_output['structured_output'] = parsed_output['raw_response']
+            elif 'raw_response' in parsed_output and not parsed_output.get('structured_output'): # Check if not already set
+                # If no JSON, but raw_response is there, use it as structured_output
+                # This helps simpler agents that just output text (e.g. a single code block)
+                parsed_output['structured_output'] = parsed_output['raw_response']
+                self.logger.log(f"[{self.name}] No JSON block found. Using raw response as structured_output.", self.role)
+
         return parsed_output
 
     def set_model_from_config(self, model_key: str, model_mapping: dict):
+        # This method remains as previously defined.
         new_model_name = model_mapping.get(model_key)
         if new_model_name:
             self.current_model = new_model_name
@@ -187,8 +149,6 @@ __all__ = [
     "state_manager",
     "style_engineer",
     "test_writer",
-    "FrontendSubAgent",
+    "FrontendSubAgent",  # Added FrontendSubAgent
     "FrontendCrewRunner",
 ]
-
-[end of crews/web_dev_crew/web_agents/__init__.py]
