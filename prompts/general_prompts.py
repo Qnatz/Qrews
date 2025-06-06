@@ -108,7 +108,18 @@ Specific JSON content requirements:
                     - For any other type of 'web' or 'fullstack' project (e.g., 'a website with one page' that isn't explicitly described as static-only, or any site involving forms, dynamic data, user accounts, etc.), you MUST assume a backend is required.
             - For non-web project types, determine `backend_needed` and `suggested_tech_stack.backend` based on their specific requirements.
             - Be conservative with specific technology suggestions if unsure, but ensure the `backend` field is appropriately non-null if a backend is deemed necessary by the conditions above.)
-8. CRITICAL REMINDER: Your entire response MUST end with "Final Answer:" followed IMMEDIATELY by a single, valid JSON object as specified in "EXPECTED OUTPUT STRUCTURE". No other text should follow the JSON object. Ensure the JSON is complete and not truncated.
+8. CRITICAL OUTPUT REQUIREMENT: Your entire response MUST conclude with "Final Answer:" followed IMMEDIATELY by a single, valid, and complete JSON object. NO OTHER TEXT SHOULD FOLLOW THE JSON OBJECT. Ensure the JSON is not truncated. For example:
+   Final Answer:
+   {{
+     "project_type_confirmed": "web",
+     "project_summary": "A concise summary of the project.",
+     "backend_needed": true,
+     "frontend_needed": true,
+     "mobile_needed": false,
+     "key_requirements": ["Detailed key requirement 1", "Detailed key requirement 2"],
+     "suggested_tech_stack": {{ "frontend": "React", "backend": "Node.js/Express", "database": "PostgreSQL" }}
+   }}
+   FAILURE TO STRICTLY ADHERE TO THIS OUTPUT FORMAT WILL RESULT IN AUTOMATED TASK FAILURE AND HINDER PROJECT PROGRESS. Adherence is mandatory.
 
 {common_context}
 
