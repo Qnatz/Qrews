@@ -1451,5 +1451,3 @@ def get_evaluation_prompt(eval_type, context):
         )
 
 [end of prompts/general_prompts.py]
-
-[end of prompts/general_prompts.py]
