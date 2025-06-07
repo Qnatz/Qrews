@@ -111,15 +111,15 @@ Specific JSON content requirements:
             - Be conservative with specific technology suggestions if unsure, but ensure the `backend` field is appropriately non-null if a backend is deemed necessary by the conditions above.)
 8. CRITICAL OUTPUT REQUIREMENT: Your entire response MUST conclude with "Final Answer:" followed IMMEDIATELY by a single, valid, and complete JSON object. NO OTHER TEXT SHOULD FOLLOW THE JSON OBJECT. Ensure the JSON is not truncated. For example:
    Final Answer:
-   {{
+   {{{{
      "project_type_confirmed": "web",
      "project_summary": "A concise summary of the project.",
      "backend_needed": true,
      "frontend_needed": true,
      "mobile_needed": false,
      "key_requirements": ["Detailed key requirement 1", "Detailed key requirement 2"],
-     "suggested_tech_stack": {{ "frontend": "React", "backend": "Node.js/Express", "database": "PostgreSQL" }}
-   }}
+     "suggested_tech_stack": {{{{ "frontend": "React", "backend": "Node.js/Express", "database": "PostgreSQL" }}}}
+   }}}}
    FAILURE TO STRICTLY ADHERE TO THIS OUTPUT FORMAT WILL RESULT IN AUTOMATED TASK FAILURE AND HINDER PROJECT PROGRESS. Adherence is mandatory.
 
 {common_context}
@@ -129,19 +129,19 @@ Specific JSON content requirements:
 === EXPECTED OUTPUT STRUCTURE ===
 Thought: [Your detailed analysis process, how you determined the project type, key requirements, and technology suggestions based on the user's input and project context.]
 Final Answer:
-{{
+{{{{
   "project_type_confirmed": "...",
   "project_summary": "...",
   "backend_needed": true/false,
   "frontend_needed": true/false,
   "mobile_needed": true/false,
   "key_requirements": ["...", "..."],
-  "suggested_tech_stack": {{
+  "suggested_tech_stack": {{{{
     "frontend": "...",
     "backend": "...",
     "database": "..."
-  }}
-}}
+  }}}}
+}}}}
 """
 
 PLANNER_PREAMBLE = """VERY IMPORTANT AND NON-NEGOTIABLE INSTRUCTIONS:
@@ -179,52 +179,52 @@ Your task: Create COMPREHENSIVE development plan with milestones and tasks.
 Thought: [Your planning process, including how you are structuring the milestones and tasks according to the instructions. Specifically mention how you are incorporating post-deployment, specific testing, backend for mobile (if applicable), and VCS/build tasks into Milestone 1. Also include a 2-3 sentence CONTEXT section here about the project status - technical details about current state or starting point, based on objective and provided context.]
 
 Final Answer:
-{{
+{{{{
   "milestones": [
-    {{
+    {{{{
       "name": "Milestone 1: Project Setup, Core Data Model, and Initial Operations",
       "description": "Establish foundational elements including version control, build scripts, core data structures, and initial API contracts if a backend is involved.",
       "tasks": [
-        {{ "id": "1.1", "description": "Initialize and set up remote Git repository (e.g., on GitHub/Gitea).", "assignee_type": "developer_or_architect" }},
-        {{ "id": "1.2", "description": "Create initial build automation script (e.g., basic Gradle tasks for Android, or shell script for backend builds/tests).", "assignee_type": "developer_or_architect" }},
-        {{ "id": "1.3", "description": "Define core data models (e.g., for Tenants, Properties) using {tech_stack_database_name} conventions if applicable, or as POJOs/data classes.", "assignee_type": "architect_or_developer" }},
-        {{ "id": "1.4", "description": "Example: Write unit tests for Tenant data model with 80% coverage goal.", "assignee_type": "developer" }}
+        {{{{ "id": "1.1", "description": "Initialize and set up remote Git repository (e.g., on GitHub/Gitea).", "assignee_type": "developer_or_architect" }}}},
+        {{{{ "id": "1.2", "description": "Create initial build automation script (e.g., basic Gradle tasks for Android, or shell script for backend builds/tests).", "assignee_type": "developer_or_architect" }}}},
+        {{{{ "id": "1.3", "description": "Define core data models (e.g., for Tenants, Properties) using {tech_stack_database_name} conventions if applicable, or as POJOs/data classes.", "assignee_type": "architect_or_developer" }}}},
+        {{{{ "id": "1.4", "description": "Example: Write unit tests for Tenant data model with 80% coverage goal.", "assignee_type": "developer" }}}}
         // ... more specific tasks for milestone 1 (around 15-20 total for M1)
       ]
-    }},
-    {{
+    }}}},
+    {{{{
       "name": "Milestone 2: Feature Implementation Phase 1",
       "description": "Development of the first set of core features.",
       "tasks": [] // Empty or only high-level task descriptions for M2 onwards
-    }},
-    {{
+    }}}},
+    {{{{
       "name": "Milestone 3: Feature Implementation Phase 2 & Integration",
       "description": "Development of further features and integration between components.",
       "tasks": []
-    }},
-    {{
+    }}}},
+    {{{{
       "name": "Milestone 4: Testing, Refinement, and Deployment Preparation",
       "description": "Comprehensive testing, bug fixing, and preparation for initial deployment.",
       "tasks": []
-    }},
-    {{
+    }}}},
+    {{{{
       "name": "Milestone 5: Post-Deployment Support & Monitoring",
       "description": "Ongoing maintenance, bug fixing, performance monitoring, and handling minor feature requests after initial deployment. Example tasks: 'Set up initial bug tracking and reporting channel,' 'Define process for handling minor feature requests,' 'Establish basic performance monitoring alerts.'",
       "tasks": []
-    }}
+    }}}}
   ],
   "key_risks": [
-    {{
+    {{{{
       "risk": "Integration with a third-party payment gateway might be more complex or take longer than anticipated.",
       "mitigation": "Allocate additional buffer time for payment gateway integration. Begin research and create a prototype early in the relevant milestone. Ensure clear API documentation is available from the provider."
-    }},
-    {{
+    }}}},
+    {{{{
       "risk": "Chosen technology {tech_stack_backend_name} might have a steeper learning curve for the team if unfamiliar.",
       "mitigation": "Schedule focused learning sessions or pair programming for team members new to {tech_stack_backend_name}. Utilize online documentation and community resources proactively."
-    }}
+    }}}}
     // ... other potential risks based on project objective and stack
   ]
-}}
+}}}}
 ```
 """
 
@@ -265,15 +265,15 @@ TECH_PROPOSALS_LIST_STRUCTURE_INSTRUCTION = r"""
   - **ABSOLUTELY CRITICAL `tech_proposals` STRUCTURE**: Each category within the `tech_proposals` object (e.g., `web_backend`, `frontend`, `database`, `media_storage`) MUST be a LIST of proposal objects. This is true EVEN IF a category has only ONE proposal. Do NOT output a category as a single object. IT MUST BE A LIST containing one or more proposal objects.
         Example of correct structure:
         ```json
-        "tech_proposals": {
-          "web_backend": [ { "technology": "Node.js/Express", "reason": "...", "confidence": 0.9, "effort_estimate": "medium" } ],
-          "frontend": [ { "technology": "React", "reason": "...", "confidence": 0.9, "effort_estimate": "medium" } ],
+        "tech_proposals": {{
+          "web_backend": [ {{ "technology": "Node.js/Express", "reason": "...", "confidence": 0.9, "effort_estimate": "medium" }} ],
+          "frontend": [ {{ "technology": "React", "reason": "...", "confidence": 0.9, "effort_estimate": "medium" }} ],
           "database": [
-            { "technology": "PostgreSQL", "reason": "Main DB", "confidence": 0.9, "effort_estimate": "low" },
-            { "technology": "Redis", "reason": "Caching", "confidence": 0.8, "effort_estimate": "low" }
+            {{ "technology": "PostgreSQL", "reason": "Main DB", "confidence": 0.9, "effort_estimate": "low" }},
+            {{ "technology": "Redis", "reason": "Caching", "confidence": 0.8, "effort_estimate": "low" }}
           ],
           // other categories like 'media_storage' would also be lists of objects
-        }
+        }}
         ```
         Failure to adhere to this list-of-objects structure for EACH category under `tech_proposals` will result in parsing failure.
     - You MAY also propose for 'media_storage' or 'database' if relevant and the existing stack description (e.g., `{tech_stack_database_name}`) is too generic for a concrete implementation choice (e.g., if it just says "SQL" you might propose "PostgreSQL"), or to confirm a specific choice already provided in your fixed stack.
@@ -316,41 +316,41 @@ ARCHITECT_EXPECTED_OUTPUT_STRUCTURE = """
 Thought: [Your detailed architectural design process. Explain your component choices, interactions, and justifications, ensuring strict adherence to the provided fixed technology stack. Describe how you are fulfilling the structural requirements and formulating technology proposals.]
 
 Final Answer:
-{{
-  "architecture_design": {{
+{{{{
+  "architecture_design": {{{{
     "diagram": "[CONCISE Component Diagram or Directory Structure, textual if needed, using fixed stack technologies.]",
     "description": "[CONCISE Description of components and interactions, using fixed stack technologies. Use bullet points for key features.]",
     "justification": "[CONCISE Justification of architectural decisions within the given stack. Use bullet points.]"
-  }},
-  "tech_proposals": {{
+  }}}},
+  "tech_proposals": {{{{
     "web_backend": [ // This category is mandatory
-      {{
+      {{{{
         "technology": "ExampleBackendTech (e.g., Node.js with Express.js)",
         "reason": "Detailed justification for choosing this backend technology...",
         "confidence": 0.9,
         "effort_estimate": "medium"
-      }}
+      }}}}
       // Add more proposals for web_backend if applicable
     ],
     "media_storage": [ // Optional: only if relevant and you have a specific proposal
-      {{
+      {{{{
         "technology": "ExampleMediaStorage (e.g., Amazon S3)",
         "reason": "Detailed justification...",
         "confidence": 0.8,
         "effort_estimate": "low"
-      }}
+      }}}}
     ],
     "database": [
-      {{
+      {{{{
         "technology": "ExampleDBTech (e.g., PostgreSQL)",
         "reason": "Justification for this database choice linked to project needs and the allowed {tech_stack_database_name}.",
         "confidence": 0.9,
         "effort_estimate": "low"
-      }}
+      }}}}
     ]
     // Add other relevant categories (e.g., 'frontend', 'mobile_database') as needed, following the same list-of-objects structure.
-  }}
-}}
+  }}}}
+}}}}
 """
 
 ARCHITECT_PROMPT = (
@@ -390,53 +390,53 @@ This specification will be used to generate a Node.js/Express backend. Therefore
    - Authentication requirements (e.g., JWT in Authorization header).
 5. **Security Scheme Requirement:** MUST include a security scheme in `components.securitySchemes` (OAuth2 with Client Credentials flow preferred) and define a global `security` requirement. Example:
    ```json
-   "components": {{
-     "securitySchemes": {{
-       "OAuth2": {{
+   "components": {{{{
+     "securitySchemes": {{{{
+       "OAuth2": {{{{
          "type": "oauth2",
-         "flows": {{
-           "clientCredentials": {{
+         "flows": {{{{
+           "clientCredentials": {{{{
              "tokenUrl": "https://auth.estateapp.com/token", // Replace with a suitable placeholder or actual URL if known
-             "scopes": {{
+             "scopes": {{{{
                "invoices:write": "Generate invoices",
                "tenants:read": "Access tenant data"
                // Define other relevant scopes based on the project
-             }}
-           }}
-         }}
-       }}
-     }}
+             }}}}
+           }}}}
+         }}}}
+       }}}}
+     }}}}
      // ... other components like schemas ...
-   }},
-   "security": [{{ "OAuth2": ["invoices:write", "tenants:read"] }}] // Adjust scopes as needed
+   }}}},
+   "security": [{{{{ "OAuth2": ["invoices:write", "tenants:read"] }}}} ] // Adjust scopes as needed
    ```
 6. **Standardized Error Responses:** Define and use standardized error responses.
    - Define reusable error schemas (e.g., `NotFoundError`, `ValidationError`) in `components.schemas`. Each should include `code` and `message`.
    - API paths MUST use these for relevant HTTP error codes (400, 401, 403, 404, 500).
    - Example error schema in `components.schemas`:
      ```json
-     "NotFoundError": {{
+     "NotFoundError": {{{{
        "type": "object",
-       "properties": {{
-         "code": {{ "type": "string", "example": "ERR_NOT_FOUND" }},
-         "message": {{ "type": "string", "example": "The requested resource was not found." }}
-       }}
-     }}
+       "properties": {{{{
+         "code": {{{{ "type": "string", "example": "ERR_NOT_FOUND" }}}},
+         "message": {{{{ "type": "string", "example": "The requested resource was not found." }}}}
+       }}}}
+     }}}}
      ```
    - Example usage in an endpoint's responses:
      ```json
-     "responses": {{
+     "responses": {{{{
        // ... success responses ...
-       "404": {{
+       "404": {{{{
          "description": "Resource not found.",
-         "content": {{
-           "application/json": {{
-             "schema": {{ "$ref": "#/components/schemas/NotFoundError" }}
-           }}
-         }}
-       }}
+         "content": {{{{
+           "application/json": {{{{
+             "schema": {{{{ "$ref": "#/components/schemas/NotFoundError" }}}}
+           }}}}
+         }}}}
+       }}}},
        // ... other error responses ...
-     }}
+     }}}}
      ```
 7. Ensure endpoint paths and operations are conventional for Node.js/Express routing.
 8. **JSON Syntax**: Output MUST be a single, valid JSON object with strict syntax (double-quoted keys/strings, no trailing commas, balanced braces/brackets).
@@ -455,148 +455,148 @@ Relevant Plan Items for API Design: {plan_summary_for_api_design}
 Thought: [Your design process for the OpenAPI 3.0.x JSON specification, keeping Node.js/Express compatibility in mind. Detail your choices for paths, methods, request/response schemas, data types, security schemes, and standardized error responses. Explain how this design is RESTful and suitable for Node.js/Express, and how it adheres to all instructions.]
 
 Final Answer:
-{{
+{{{{
   "openapi": "3.0.0",
-  "info": {{
+  "info": {{{{
     "title": "{project_name} API",
     "version": "1.0.0",
     "description": "{objective}"
-  }},
+  }}}},
   "security": [
     // This should reference the name defined in securitySchemes, e.g., "OAuth2"
-    // Example: {{ "OAuth2": ["scope1", "scope2"] }} - Adjust scopes as per your security scheme
+    // Example: {{{{ "OAuth2": ["scope1", "scope2"] }}}} - Adjust scopes as per your security scheme
     // This section will be populated based on the security scheme defined below.
   ],
-  "paths": {{
-    "/your_resource_path/{{item_id}}": {{
-      "get": {{
+  "paths": {{{{
+    "/your_resource_path/{{{{item_id}}}}": {{{{
+      "get": {{{{
         "summary": "Example GET endpoint",
         "parameters": [
-          {{
+          {{{{
             "name": "item_id",
             "in": "path",
             "required": true,
-            "schema": {{
+            "schema": {{{{
               "type": "string"
-            }}
-          }}
+            }}}}
+          }}}}
         ],
-        "responses": {{
-          "200": {{
+        "responses": {{{{
+          "200": {{{{
             "description": "Successful response",
-            "content": {{
-              "application/json": {{
-                "schema": {{
+            "content": {{{{
+              "application/json": {{{{
+                "schema": {{{{
                   "type": "object",
-                  "properties": {{
-                    "message": {{
+                  "properties": {{{{
+                    "message": {{{{
                       "type": "string"
-                    }}
-                  }}
-                }}
-              }}
-            }}
-          }},
-          "401": {{
+                    }}}}
+                  }}}}
+                }}}}
+              }}}}
+            }}}}
+          }}}},
+          "401": {{{{
             "description": "Authentication Error",
-            "content": {{
-              "application/json": {{
-                "schema": {{ "$ref": "#/components/schemas/AuthenticationError" }}
-              }}
-            }}
-          }},
-          "404": {{
+            "content": {{{{
+              "application/json": {{{{
+                "schema": {{{{ "$ref": "#/components/schemas/AuthenticationError" }}}}
+              }}}}
+            }}}}
+          }}}},
+          "404": {{{{
             "description": "Resource not found",
-            "content": {{
-              "application/json": {{
-                "schema": {{ "$ref": "#/components/schemas/NotFoundError" }}
-              }}
-            }}
-          }},
-          "500": {{
+            "content": {{{{
+              "application/json": {{{{
+                "schema": {{{{ "$ref": "#/components/schemas/NotFoundError" }}}}
+              }}}}
+            }}}}
+          }}}},
+          "500": {{{{
             "description": "Internal Server Error",
-            "content": {{
-              "application/json": {{
-                "schema": {{ "$ref": "#/components/schemas/GenericServerError" }}
-              }}
-            }}
-          }}
-        }}
-      }}
-    }}
-  }},
-  "components": {{
-    "schemas": {{
-      "Error": {{ // A generic Error schema, can be expanded or replaced by specific errors
+            "content": {{{{
+              "application/json": {{{{
+                "schema": {{{{ "$ref": "#/components/schemas/GenericServerError" }}}}
+              }}}}
+            }}}}
+          }}}}
+        }}}}
+      }}}}
+    }}}}
+  }}}},
+  "components": {{{{
+    "schemas": {{{{
+      "Error": {{{{ // A generic Error schema, can be expanded or replaced by specific errors
         "type": "object",
-        "properties": {{
-          "code": {{
+        "properties": {{{{
+          "code": {{{{
             "type": "string",
             "example": "ERR_GENERAL"
-          }},
-          "message": {{
+          }}}},
+          "message": {{{{
             "type": "string",
             "example": "An unexpected error occurred."
-          }}
-        }}
-      }},
-      "NotFoundError": {{
+          }}}}
+        }}}}
+      }}}},
+      "NotFoundError": {{{{
         "type": "object",
-        "properties": {{
-          "code": {{ "type": "string", "example": "ERR_NOT_FOUND" }},
-          "message": {{ "type": "string", "example": "The requested resource was not found." }}
-        }}
-      }},
-      "ValidationError": {{
+        "properties": {{{{
+          "code": {{{{ "type": "string", "example": "ERR_NOT_FOUND" }}}},
+          "message": {{{{ "type": "string", "example": "The requested resource was not found." }}}}
+        }}}}
+      }}}},
+      "ValidationError": {{{{
         "type": "object",
-        "properties": {{
-          "code": {{ "type": "string", "example": "ERR_VALIDATION" }},
-          "message": {{ "type": "string", "example": "Input validation failed." }},
-          "details": {{
+        "properties": {{{{
+          "code": {{{{ "type": "string", "example": "ERR_VALIDATION" }}}},
+          "message": {{{{ "type": "string", "example": "Input validation failed." }}}},
+          "details": {{{{
             "type": "array",
-            "items": {{ "type": "string" }},
+            "items": {{{{ "type": "string" }}}},
             "example": ["Field 'email' is required.", "Field 'age' must be a positive number."]
-          }}
-        }}
-      }},
-      "AuthenticationError": {{
+          }}}}
+        }}}}
+      }}}},
+      "AuthenticationError": {{{{
         "type": "object",
-        "properties": {{
-          "code": {{ "type": "string", "example": "ERR_AUTH_FAILED" }},
-          "message": {{ "type": "string", "example": "Authentication failed or token is invalid." }}
-        }}
-      }},
-      "GenericServerError": {{
+        "properties": {{{{
+          "code": {{{{ "type": "string", "example": "ERR_AUTH_FAILED" }}}},
+          "message": {{{{ "type": "string", "example": "Authentication failed or token is invalid." }}}}
+        }}}}
+      }}}},
+      "GenericServerError": {{{{
         "type": "object",
-        "properties": {{
-          "code": {{ "type": "string", "example": "ERR_SERVER_ERROR" }},
-          "message": {{ "type": "string", "example": "An internal server error occurred." }}
-        }}
-      }}
-    }},
-    "securitySchemes": {{
-      "OAuth2": {{ // This name "OAuth2" is an example, it can be any name.
+        "properties": {{{{
+          "code": {{{{ "type": "string", "example": "ERR_SERVER_ERROR" }}}},
+          "message": {{{{ "type": "string", "example": "An internal server error occurred." }}}}
+        }}}}
+      }}}}
+    }}}},
+    "securitySchemes": {{{{
+      "OAuth2": {{{{ // This name "OAuth2" is an example, it can be any name.
         "type": "oauth2",
-        "flows": {{
-          "clientCredentials": {{
+        "flows": {{{{
+          "clientCredentials": {{{{
             "tokenUrl": "https://auth.service.example.com/v1/token", // IMPORTANT: This is an example URL. Replace with the actual token endpoint for the project's authentication service.
-            "scopes": {{
+            "scopes": {{{{
               "read:example": "Read access to example resources",
               "write:example": "Write access to example resources"
               // Define other scopes as needed for the project
-            }}
-          }}
-        }}
-      }}
+            }}}}
+          }}}}
+        }}}}
+      }}}}
       // Potentially other security schemes like APIKeyAuth, BearerAuth etc.
-      // "APIKeyAuth": {{
+      // "APIKeyAuth": {{{{
       //   "type": "apiKey",
       //   "in": "header",
       //   "name": "X-API-KEY"
-      // }}
-    }}
-  }}
-}}
+      // }}}}
+    }}}}
+  }}}}
+}}}}
 ```
 """
 
@@ -725,24 +725,24 @@ Responsive Breakpoints: {breakpoints}
 Thought: [Your design and code generation process. Explain your component structure, state management, responsive considerations, API integrations, and how you are using the specified {tech_stack_frontend_name}. Detail any templates used or why you chose to generate from scratch. Describe each file you are generating in the `generated_code_files` list.]
 
 Final Answer:
-{{
-  "design_overview": {{
+{{{{
+  "design_overview": {{{{
     "component_structure": "Example: Login page contains LoginForm component, which includes EmailInput, PasswordInput, and SubmitButton components.",
     "state_management": "Example: LoginForm component manages its own state for email and password fields. Submission errors handled via props from parent.",
     "responsive_design": "Example: Form will stack vertically on small screens and use a two-column layout on larger screens.",
     "api_integration": "Example: LoginForm onSubmit will call the /api/auth/login endpoint using a POST request."
-  }},
+  }}}},
   "generated_code_files": [
-    {{
+    {{{{
       "file_name_suggestion": "LoginForm.jsx",
-      "code_content": "export default function LoginForm() {{ /* ... JSX and logic ... */ }}"
-    }},
-    {{
+      "code_content": "export default function LoginForm() {{{{ /* ... JSX and logic ... */ }}}}"
+    }}}},
+    {{{{
       "file_name_suggestion": "LoginForm.css",
-      "code_content": ".login-form {{ /* ... CSS rules ... */ }}"
-    }}
+      "code_content": ".login-form {{{{ /* ... CSS rules ... */ }}}}"
+    }}}}
   ]
-}}
+}}}}
 ```
 """
 
@@ -804,35 +804,35 @@ Platform Specifics: {platform_specifics}
 Thought: [Your detailed design and code generation process for the mobile components. Explain your choices for component structure, navigation, state management, API integration, and any specific framework solutions using {tech_stack_frontend_name}. If proposing technologies (like `mobile_database`), justify them. Describe each file you are generating in `generated_code_files`.]
 
 Final Answer:
-{{
-  "mobile_details": {{
+{{{{
+  "mobile_details": {{{{
     "component_structure": "[CONCISE bullet-point list of key mobile components and hierarchy using {tech_stack_frontend_name}. Example: User Profile screen contains AvatarView, UserInfoSection, ActionButtons.]",
     "navigation": "[CONCISE bullet-point description of navigation flow. Example: From SettingsScreen, tap 'Profile' to navigate to UserProfileScreen.]",
     "state_management": "[CONCISE bullet-point description of state management approach. Example: UserProfileViewModel manages user data, fetched via UserRepository.]",
     "api_integration": "[CONCISE bullet-point list of API integration points. Example: UserProfileViewModel calls /api/users/me to get profile data.]",
     "framework_solutions": "[CONCISE bullet-point list of specific framework solutions/libraries used. Example: Using Jetpack Compose for UI, Retrofit for networking.]"
-  }},
-  "tech_proposals": {{
+  }}}},
+  "tech_proposals": {{{{
     "mobile_database": [
-      {{
+      {{{{
         "technology": "Room Persistence Library",
         "reason": "Optimal for native Android with Kotlin due to Jetpack integration, compile-time safety, and structured SQL.",
         "confidence": 0.95,
         "effort_estimate": "low"
-      }}
+      }}}}
     ]
-  }},
+  }}}},
   "generated_code_files": [
-    {{
+    {{{{
       "file_name_suggestion": "UserProfileViewModel.kt",
-      "code_content": "class UserProfileViewModel(...) : ViewModel() {{ /* ... Kotlin code ... */ }}"
-    }},
-    {{
+      "code_content": "class UserProfileViewModel(...) : ViewModel() {{{{ /* ... Kotlin code ... */ }}}}"
+    }}}},
+    {{{{
       "file_name_suggestion": "UserProfileScreen.kt",
-      "code_content": "@Composable fun UserProfileScreen(...) {{ /* ... Jetpack Compose code ... */ }}"
-    }}
+      "code_content": "@Composable fun UserProfileScreen(...) {{{{ /* ... Jetpack Compose code ... */ }}}}"
+    }}}}
   ]
-}}
+}}}}
 ```
 """
 
@@ -952,20 +952,20 @@ Thought: [Your reasoning process for the technology proposals. Discuss how you a
 
 Final Answer:
 [
-  {{
+  {{{{
     "category": "backend",
     "technology": "Node.js/Express",
     "justification": "Non-blocking I/O, great for REST APIs, easy team onboarding.",
     "confidence": 0.95,
     "effort_estimate": "medium"
-  }},
-  {{
+  }}}},
+  {{{{
     "category": "database",
     "technology": "PostgreSQL",
     "justification": "ACID-compliant, ideal for relational data like map points.",
     "confidence": 0.9,
     "effort_estimate": "low"
-  }}
+  }}}}
 ]
 ```
 
@@ -1004,7 +1004,7 @@ Mobile Development -> Use MobileDeveloper
           - `current_file_content`: (string) The actual code content to be written.
       iii. The `task` description in your `Action Input` for `code_writer` should be simple, e.g., "Write the provided code to the specified file path."
           Example `Action Input` for `code_writer`:
-          `{{ "task": "Write the provided code to the specified file path using the 'current_file_path' and 'current_file_content' from the context.", "context": {{ "project_name": "{project_name}", "project_name_slug": "{project_name_slug}", "current_dir": "/workspace/{project_name_slug}", "current_file_path": "/workspace/{project_name_slug}/src/components/MyComponent.js", "current_file_content": "...", ...other necessary minimal context... }} }}`
+          `{{{{ "task": "Write the provided code to the specified file path using the 'current_file_path' and 'current_file_content' from the context.", "context": {{{{ "project_name": "{project_name}", "project_name_slug": "{project_name_slug}", "current_dir": "/workspace/{project_name_slug}", "current_file_path": "/workspace/{project_name_slug}/src/components/MyComponent.js", "current_file_content": "...", ...other necessary minimal context... }}}} }}}}`
           *(Self-correction: The context passed to `code_writer` should be the full `ProjectContext` object that has these fields set, not just a minimal context, so its Python code can access `self.tool_kit` etc. The example above is illustrative of the key fields being set by TaskMaster before passing the context object).*
 4. Choose appropriate agent (considering point 3 for code generation and writing flow).
 5. Validate results.
@@ -1015,10 +1015,10 @@ Mobile Development -> Use MobileDeveloper
 a. You are responsible for maintaining the `current_project_data` (an in-memory dictionary holding all project information like analysis, plan, summary, tech stack, history, etc.).
 b. You will be provided with the `project_name_slug` for the current project (as seen above).
 c. After each significant project phase or agent completion (e.g., after ProjectAnalyzer provides analysis, after TechNegotiator confirms the stack, after Planner creates a plan, after Architect designs the architecture, or after a CodeWriter task that results in a key file being created), you MUST update the `current_project_data` with the new information.
-d. This includes updating the `last_updated` timestamp and adding a concise entry to `agent_history` within `current_project_data`. Each history entry should be an object with fields like `{{'agent_name': '...', 'timestamp': '...', 'action_summary': '...', 'output_reference': '...'}}`. For example, after `CodeWriter` creates a file, the `action_summary` could be 'Implemented UserService class' and `output_reference` could be 'src/services/user_service.py'.
+d. This includes updating the `last_updated` timestamp and adding a concise entry to `agent_history` within `current_project_data`. Each history entry should be an object with fields like `{{{{'agent_name': '...', 'timestamp': '...', 'action_summary': '...', 'output_reference': '...'}}}}`. For example, after `CodeWriter` creates a file, the `action_summary` could be 'Implemented UserService class' and `output_reference` could be 'src/services/user_service.py'.
 e. Immediately after these updates, you MUST use the `write_project_context` tool to save the entire `current_project_data` to the project's dedicated `project_context.json` file.
    Example Action: `write_project_context`
-   Example Action Input: `{{ "project_name_slug": "{project_name_slug}", "context_data": {{ ... current_project_data ... }} }}` (You will need to ensure the actual `current_project_data` is passed here).
+   Example Action Input: `{{{{ "project_name_slug": "{project_name_slug}", "context_data": {{ ... current_project_data ... }} }}}}` (You will need to ensure the actual `current_project_data` is passed here).
 f. At the very beginning of a project, you should have used `read_project_context` to load any existing data. This saving instruction applies to updates *after* that initial load.
 
 Recent History:
