@@ -1273,6 +1273,7 @@ AGENT_PROMPTS = {
     "api_designer": USER_API_DESIGNER_PROMPT_TEMPLATE,
     "code_writer": CODE_WRITER_PROMPT,
     "web_developer": WEB_DEVELOPER_PROMPT,
+    "frontend_builder": WEB_DEVELOPER_PROMPT,
     "mobile_developer": MOBILE_DEVELOPER_PROMPT, # This is a general role, specific mobile sub-agents have their own prompts
     "tester": TESTER_PROMPT,
     "debugger": DEBUGGER_PROMPT,
