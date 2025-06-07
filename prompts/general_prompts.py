@@ -1233,7 +1233,7 @@ AGENT_PROMPTS = {
     "mobile_developer": MOBILE_DEVELOPER_PROMPT, # This is a general role, specific mobile sub-agents have their own prompts
     "tester": TESTER_PROMPT,
     "debugger": DEBUGGER_PROMPT,
-    "tech_negotiator": TECH_NEGOTIATOR_PROMPT,
+    "tech_negotiator": TECH_NEGOTIATOR_PROMPT, # Ensure this comma is present
 }
 
 # Merge specialized prompts
@@ -1449,5 +1449,7 @@ def get_evaluation_prompt(eval_type, context):
             project_type=context.get('project_type', 'fullstack'),
             architecture=context.get('architecture', '')
         )
+
+[end of prompts/general_prompts.py]
 
 [end of prompts/general_prompts.py]
