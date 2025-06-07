@@ -248,11 +248,23 @@ class TaskMaster:
                 all_concerns = []
                 current_approved_stack_dict = project_context.approved_tech_stack.model_dump(exclude_none=True)
                 current_platform_reqs_dict = project_context.platform_requirements.model_dump()
+
+                # Determine backend_needed for validation call
+                backend_needed_for_validation = False # Default value
+                if project_context.analysis:
+                    if hasattr(project_context.analysis, 'backend_needed'):
+                        backend_needed_for_validation = project_context.analysis.backend_needed
+                    else:
+                        self.logger.log("Tech Council: 'backend_needed' attribute missing in project_context.analysis. Defaulting to False for agent validation.", "TaskMaster", level="WARNING")
+                else:
+                    self.logger.log("Tech Council: project_context.analysis is None. Defaulting backend_needed to False for agent validation.", "TaskMaster", level="WARNING")
+
                 for agent in agents_to_consult_instances:
                     try:
                         validation_result = agent.validate_stack(
                             approved_stack=current_approved_stack_dict,
-                            platform_requirements=current_platform_reqs_dict
+                            platform_requirements=current_platform_reqs_dict,
+                            backend_needed=backend_needed_for_validation
                         )
                         self.logger.log(f"Tech Council: Validation from {agent.name} ({agent.role}): {validation_result}", "TaskMaster")
                         if not validation_result.get("approved"):
