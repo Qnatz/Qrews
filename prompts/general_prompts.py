@@ -1450,5 +1450,3 @@ def get_evaluation_prompt(eval_type, context):
             project_type=context.get('project_type', 'fullstack'),
             architecture=context.get('architecture', '')
         )
-
-[end of prompts/general_prompts.py]
