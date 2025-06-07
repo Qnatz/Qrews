@@ -448,6 +448,14 @@ class Agent:
             parsed_result["errors"].append(error_message)
             self.logger.log(f"LLM call failed or returned error for {self.name}: {error_message}", self.role, level="ERROR")
             return parsed_result
+        elif len(response_text.strip()) < 25 and not \
+             (response_text.strip().startswith("{") or response_text.strip().startswith("[")):
+            # If response is very short and doesn't start like JSON
+            parsed_result["status"] = "error"
+            error_message = f"LLM response for agent '{self.name}' is unusually short and not recognizable as JSON. Raw fragment: '{response_text.strip()}'"
+            parsed_result["errors"].append(error_message)
+            self.logger.log(error_message, self.role, level="ERROR")
+            return parsed_result
         try:
             if '```json' in response_text:
                 json_start = response_text.find('```json') + 7
