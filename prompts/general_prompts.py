@@ -1058,10 +1058,10 @@ a. You are responsible for maintaining the `current_project_data` (an in-memory 
 b. You will be provided with the `project_name_slug` for the current project (as seen above).
 c. After each significant project phase or agent completion (e.g., after ProjectAnalyzer provides analysis, after TechNegotiator confirms the stack, after Planner creates a plan, after Architect designs the architecture, or after a CodeWriter task that results in a key file being created), you MUST update the `current_project_data` with the new information.
 d. This includes updating the `last_updated` timestamp and adding a concise entry to `agent_history` within `current_project_data`. Each history entry should be an object with fields like `{{{{'agent_name': '...', 'timestamp': '...', 'action_summary': '...', 'output_reference': '...'}}}}`. For example, after `CodeWriter` creates a file, the `action_summary` could be 'Implemented UserService class' and `output_reference` could be 'src/services/user_service.py'.
-e. Immediately after these updates, you MUST use the `write_project_context` tool to save the entire `current_project_data` to the project's dedicated `project_context.json` file.
+e. Immediately after these updates, you MUST use the `write_project_context` tool (which will use the `project_name_slug`) to save the entire `current_project_data` to the project's dedicated `project_context.json` file, expected to be within a project-specific directory (e.g., `projects/{project_name_slug}/project_context.json`).
    Example Action: `write_project_context`
    Example Action Input: `{{{{ "project_name_slug": "{project_name_slug}", "context_data": {{ ... current_project_data ... }} }}}}` (You will need to ensure the actual `current_project_data` is passed here).
-f. At the very beginning of a project, you should have used `read_project_context` to load any existing data. This saving instruction applies to updates *after* that initial load.
+f. At the very beginning of a project, you should have used `read_project_context` (providing the `project_name_slug`) to load any existing data from the project's dedicated `project_context.json` file (e.g., located at `projects/{project_name_slug}/project_context.json`). This saving instruction applies to updates *after* that initial load.
 
 Recent History:
 {history}
