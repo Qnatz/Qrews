@@ -2,6 +2,7 @@
 Comprehensive prompt templates for AI agent workflow
 """
 import json # Added for debugging logs
+from collections import defaultdict
 
 # ============== BASE TEMPLATES ==============
 AGENT_ROLE_TEMPLATE = """
@@ -1375,7 +1376,7 @@ def get_agent_prompt(agent_name, context):
         except ValueError: # If not found in mobile prompts either
              raise ValueError(f"No prompt template found for agent: {agent_name} in general or mobile specific prompts.")
 
-    base_prompt = base_template_str.format(**agent_context)
+    base_prompt = base_template_str.format_map(defaultdict(str, agent_context))
 
     tool_descriptions = "\n".join(
         f"- {tool['name']}: {tool['description']}"
