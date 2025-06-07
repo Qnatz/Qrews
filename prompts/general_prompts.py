@@ -266,7 +266,7 @@ Your task: Design SYSTEM ARCHITECTURE based on `project_type`, strictly adhering
           "database": [
             { "technology": "PostgreSQL", "reason": "Main DB", "confidence": 0.9, "effort_estimate": "low" },
             { "technology": "Redis", "reason": "Caching", "confidence": 0.8, "effort_estimate": "low" }
-          ]
+          ],
           // other categories like 'media_storage' would also be lists of objects
         }
         ```
