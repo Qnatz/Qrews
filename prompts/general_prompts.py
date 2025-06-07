@@ -246,7 +246,8 @@ Your task: Design SYSTEM ARCHITECTURE based on `project_type`, strictly adhering
 5. **Conciseness for Main Output:** For the `architecture_design` field, be concise. Use bullet points for key features and justifications where appropriate. Focus on essential details for diagrams and component descriptions.
 6. Specify technology choices (from the fixed stack) with justification for *how* they fit into the architecture.
 7. Include data flow diagrams or component diagrams IF helpful.
-8. **Offline Synchronization Strategy:** If 'Design and implement a data synchronization strategy for offline use' (or similar phrasing indicating offline support) is listed in the project's `key_requirements` (provided in `{key_requirements_for_architecture}`), your `architecture_design` (specifically the 'description' or 'justification' parts) MUST outline a basic approach for data synchronization. This should include considerations like:
+8. MANDATORY `architecture_design` FIELDS: Ensure the `architecture_design` object in your JSON output *always* includes the following string keys: `diagram`, `description`, and `justification`. All three are required.
+9. **Offline Synchronization Strategy:** If 'Design and implement a data synchronization strategy for offline use' (or similar phrasing indicating offline support) is listed in the project's `key_requirements` (provided in `{key_requirements_for_architecture}`), your `architecture_design` (specifically the 'description' or 'justification' parts) MUST outline a basic approach for data synchronization. This should include considerations like:
     - Data versioning or timestamps (e.g., `lastModified` fields in relevant data models).
     - Sync state flags (e.g., `PENDING`, `SYNCED`, `CONFLICT`).
     - A conceptual component responsible for managing the synchronization process.
@@ -256,6 +257,20 @@ Your task: Design SYSTEM ARCHITECTURE based on `project_type`, strictly adhering
         - You are STILL REQUIRED to propose one or more specific, suitable backend technologies (e.g., "Node.js with Express.js", "Python with Django/Flask", "Java with Spring Boot"). Choose one that aligns well with other stack components if specified (like frontend or database) or is a common, versatile choice for the project type.
         - In such a case, your justification for the chosen backend technology should explain why it's a good fit for the project, given the objective and key requirements. This proposal is critical for defining the backend technology.
     - Even if `{tech_stack_backend_name}` *is* specific and part of your `{relevant_tech_stack_list}`, you should still list it as a proposal under the `web_backend` category in your `tech_proposals` to confirm its use in your architecture and provide your justification for it within the architectural context. This ensures the `web_backend` category in your `tech_proposals` is always populated with a concrete, justified technology if a backend is part of the fixed stack for a web/fullstack project.
+  - **ABSOLUTELY CRITICAL `tech_proposals` STRUCTURE**: Each category within the `tech_proposals` object (e.g., `web_backend`, `frontend`, `database`, `media_storage`) MUST be a LIST of proposal objects. This is true EVEN IF a category has only ONE proposal. Do NOT output a category as a single object. IT MUST BE A LIST containing one or more proposal objects.
+        Example of correct structure:
+        ```json
+        "tech_proposals": {
+          "web_backend": [ { "technology": "Node.js/Express", "reason": "...", "confidence": 0.9, "effort_estimate": "medium" } ],
+          "frontend": [ { "technology": "React", "reason": "...", "confidence": 0.9, "effort_estimate": "medium" } ],
+          "database": [
+            { "technology": "PostgreSQL", "reason": "Main DB", "confidence": 0.9, "effort_estimate": "low" },
+            { "technology": "Redis", "reason": "Caching", "confidence": 0.8, "effort_estimate": "low" }
+          ]
+          // other categories like 'media_storage' would also be lists of objects
+        }
+        ```
+        Failure to adhere to this list-of-objects structure for EACH category under `tech_proposals` will result in parsing failure.
     - You MAY also propose for 'media_storage' or 'database' if relevant and the existing stack description (e.g., `{tech_stack_database_name}`) is too generic for a concrete implementation choice (e.g., if it just says "SQL" you might propose "PostgreSQL"), or to confirm a specific choice already provided in your fixed stack.
   - For each proposal, provide:
     - `technology`: The specific name of the technology (e.g., "Node.js with Express.js", "Amazon S3", "PostgreSQL").
@@ -279,6 +294,9 @@ Your task: Design SYSTEM ARCHITECTURE based on `project_type`, strictly adhering
     *   `justification` (string: a concise justification of architectural decisions)
 *   `tech_proposals` (object) which MUST contain at least the `web_backend` category (formatted as a list of proposal objects, even if only one proposal). Other categories like `frontend`, `database`, `media_storage`, etc., should be included if relevant to your design, also formatted as lists of proposal objects, each object containing `technology`, `reason`, `confidence`, and `effort_estimate` keys.
 
+
+=== FAILURE WARNING ===
+        FAILURE TO STRICTLY ADHERE TO ALL INSTRUCTIONS ABOVE, INCLUDING THE FIXED TECHNOLOGY STACK ({relevant_tech_stack_list}) AND THE EXACT JSON OUTPUT STRUCTURE (especially for `architecture_design` completeness and the list-of-objects format for `tech_proposals` categories), WILL RESULT IN AUTOMATED TASK FAILURE AND SIGNIFICANT PROJECT DELAYS. YOUR OUTPUT MUST BE PRECISE.
 """ + RESPONSE_FORMAT_TEMPLATE + """
 
 === EXPECTED OUTPUT STRUCTURE ===
