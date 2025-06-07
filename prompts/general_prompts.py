@@ -108,6 +108,18 @@ Specific JSON content requirements:
                     - For any other type of 'web' or 'fullstack' project (e.g., 'a website with one page' that isn't explicitly described as static-only, or any site involving forms, dynamic data, user accounts, etc.), you MUST assume a backend is required.
             - For non-web project types, determine `backend_needed` and `suggested_tech_stack.backend` based on their specific requirements.
             - Be conservative with specific technology suggestions if unsure, but ensure the `backend` field is appropriately non-null if a backend is deemed necessary by the conditions above.)
+8. CRITICAL OUTPUT REQUIREMENT: Your entire response MUST conclude with "Final Answer:" followed IMMEDIATELY by a single, valid, and complete JSON object. NO OTHER TEXT SHOULD FOLLOW THE JSON OBJECT. Ensure the JSON is not truncated. For example:
+   Final Answer:
+   {{
+     "project_type_confirmed": "web",
+     "project_summary": "A concise summary of the project.",
+     "backend_needed": true,
+     "frontend_needed": true,
+     "mobile_needed": false,
+     "key_requirements": ["Detailed key requirement 1", "Detailed key requirement 2"],
+     "suggested_tech_stack": {{ "frontend": "React", "backend": "Node.js/Express", "database": "PostgreSQL" }}
+   }}
+   FAILURE TO STRICTLY ADHERE TO THIS OUTPUT FORMAT WILL RESULT IN AUTOMATED TASK FAILURE AND HINDER PROJECT PROGRESS. Adherence is mandatory.
 
 {common_context}
 
@@ -223,7 +235,8 @@ Adherence to this defined stack is critical and mandatory for this task. Failure
 
 """
 
-ARCHITECT_PROMPT = ARCHITECT_PREAMBLE + AGENT_ROLE_TEMPLATE + """
+# --- Start of new ARCHITECT_PROMPT definition ---
+MAIN_ARCHITECT_BODY_PART_1 = """
 Your task: Design SYSTEM ARCHITECTURE based on `project_type`, strictly adhering to ONLY the technologies listed in `{relevant_tech_stack_list}` (provided in CORE INSTRUCTIONS). You MUST NOT mention, compare, or suggest any technologies not in this list. You will also PROPOSE specific technologies for key architectural components, ensuring these proposals also strictly adhere to the allowed list.
 
 === STRUCTURAL REQUIREMENTS & PROPOSALS ===
@@ -234,7 +247,8 @@ Your task: Design SYSTEM ARCHITECTURE based on `project_type`, strictly adhering
 5. **Conciseness for Main Output:** For the `architecture_design` field, be concise. Use bullet points for key features and justifications where appropriate. Focus on essential details for diagrams and component descriptions.
 6. Specify technology choices (from the fixed stack) with justification for *how* they fit into the architecture.
 7. Include data flow diagrams or component diagrams IF helpful.
-8. **Offline Synchronization Strategy:** If 'Design and implement a data synchronization strategy for offline use' (or similar phrasing indicating offline support) is listed in the project's `key_requirements` (provided in `{key_requirements_for_architecture}`), your `architecture_design` (specifically the 'description' or 'justification' parts) MUST outline a basic approach for data synchronization. This should include considerations like:
+8. MANDATORY `architecture_design` FIELDS: Ensure the `architecture_design` object in your JSON output *always* includes the following string keys: `diagram`, `description`, and `justification`. All three are required.
+9. **Offline Synchronization Strategy:** If 'Design and implement a data synchronization strategy for offline use' (or similar phrasing indicating offline support) is listed in the project's `key_requirements` (provided in `{key_requirements_for_architecture}`), your `architecture_design` (specifically the 'description' or 'justification' parts) MUST outline a basic approach for data synchronization. This should include considerations like:
     - Data versioning or timestamps (e.g., `lastModified` fields in relevant data models).
     - Sync state flags (e.g., `PENDING`, `SYNCED`, `CONFLICT`).
     - A conceptual component responsible for managing the synchronization process.
@@ -244,6 +258,23 @@ Your task: Design SYSTEM ARCHITECTURE based on `project_type`, strictly adhering
         - You are STILL REQUIRED to propose one or more specific, suitable backend technologies (e.g., "Node.js with Express.js", "Python with Django/Flask", "Java with Spring Boot"). Choose one that aligns well with other stack components if specified (like frontend or database) or is a common, versatile choice for the project type.
         - In such a case, your justification for the chosen backend technology should explain why it's a good fit for the project, given the objective and key requirements. This proposal is critical for defining the backend technology.
     - Even if `{tech_stack_backend_name}` *is* specific and part of your `{relevant_tech_stack_list}`, you should still list it as a proposal under the `web_backend` category in your `tech_proposals` to confirm its use in your architecture and provide your justification for it within the architectural context. This ensures the `web_backend` category in your `tech_proposals` is always populated with a concrete, justified technology if a backend is part of the fixed stack for a web/fullstack project.
+"""
+
+TECH_PROPOSALS_LIST_STRUCTURE_INSTRUCTION = r"""
+  - **ABSOLUTELY CRITICAL `tech_proposals` STRUCTURE**: Each category within the `tech_proposals` object (e.g., `web_backend`, `frontend`, `database`, `media_storage`) MUST be a LIST of proposal objects. This is true EVEN IF a category has only ONE proposal. Do NOT output a category as a single object. IT MUST BE A LIST containing one or more proposal objects.
+        Example of correct structure:
+        ```json
+        "tech_proposals": {
+          "web_backend": [ { "technology": "Node.js/Express", "reason": "...", "confidence": 0.9, "effort_estimate": "medium" } ],
+          "frontend": [ { "technology": "React", "reason": "...", "confidence": 0.9, "effort_estimate": "medium" } ],
+          "database": [
+            { "technology": "PostgreSQL", "reason": "Main DB", "confidence": 0.9, "effort_estimate": "low" },
+            { "technology": "Redis", "reason": "Caching", "confidence": 0.8, "effort_estimate": "low" }
+          ],
+          // other categories like 'media_storage' would also be lists of objects
+        }
+        ```
+        Failure to adhere to this list-of-objects structure for EACH category under `tech_proposals` will result in parsing failure.
     - You MAY also propose for 'media_storage' or 'database' if relevant and the existing stack description (e.g., `{tech_stack_database_name}`) is too generic for a concrete implementation choice (e.g., if it just says "SQL" you might propose "PostgreSQL"), or to confirm a specific choice already provided in your fixed stack.
   - For each proposal, provide:
     - `technology`: The specific name of the technology (e.g., "Node.js with Express.js", "Amazon S3", "PostgreSQL").
@@ -257,6 +288,9 @@ Your task: Design SYSTEM ARCHITECTURE based on `project_type`, strictly adhering
   - **Guidance for resource-intensive tasks on mobile (e.g., `pdf_generation`):**
     - Assess client-side resource strain risk (OOM errors, UI freezes).
     - If risky, recommend background processing (e.g., Android WorkManager, iOS BackgroundTasks) and justify how it maintains responsiveness.
+"""
+
+COMMON_CONTEXT_PLACEHOLDER_SECTION = """
 
 {common_context}
 
@@ -266,8 +300,16 @@ Your task: Design SYSTEM ARCHITECTURE based on `project_type`, strictly adhering
     *   `description` (string: a concise description of components and interactions)
     *   `justification` (string: a concise justification of architectural decisions)
 *   `tech_proposals` (object) which MUST contain at least the `web_backend` category (formatted as a list of proposal objects, even if only one proposal). Other categories like `frontend`, `database`, `media_storage`, etc., should be included if relevant to your design, also formatted as lists of proposal objects, each object containing `technology`, `reason`, `confidence`, and `effort_estimate` keys.
+"""
 
-""" + RESPONSE_FORMAT_TEMPLATE + """
+FAILURE_WARNING_CLAUSE = """
+
+
+=== FAILURE WARNING ===
+        FAILURE TO STRICTLY ADHERE TO ALL INSTRUCTIONS ABOVE, INCLUDING THE FIXED TECHNOLOGY STACK ({relevant_tech_stack_list}) AND THE EXACT JSON OUTPUT STRUCTURE (especially for `architecture_design` completeness and the list-of-objects format for `tech_proposals` categories), WILL RESULT IN AUTOMATED TASK FAILURE AND SIGNIFICANT PROJECT DELAYS. YOUR OUTPUT MUST BE PRECISE.
+"""
+
+ARCHITECT_EXPECTED_OUTPUT_STRUCTURE = """
 
 === EXPECTED OUTPUT STRUCTURE ===
 Thought: [Your detailed architectural design process. Explain your component choices, interactions, and justifications, ensuring strict adherence to the provided fixed technology stack. Describe how you are fulfilling the structural requirements and formulating technology proposals.]
@@ -308,8 +350,20 @@ Final Answer:
     // Add other relevant categories (e.g., 'frontend', 'mobile_database') as needed, following the same list-of-objects structure.
   }}
 }}
-```
 """
+
+ARCHITECT_PROMPT = (
+    ARCHITECT_PREAMBLE +
+    AGENT_ROLE_TEMPLATE +
+    MAIN_ARCHITECT_BODY_PART_1 +
+    TECH_PROPOSALS_LIST_STRUCTURE_INSTRUCTION +
+    COMMON_CONTEXT_PLACEHOLDER_SECTION +
+    FAILURE_WARNING_CLAUSE +
+    RESPONSE_FORMAT_TEMPLATE +
+    ARCHITECT_EXPECTED_OUTPUT_STRUCTURE
+)
+# --- End of new ARCHITECT_PROMPT definition ---
+
 
 API_DESIGNER_PREAMBLE = """VERY IMPORTANT AND NON-NEGOTIABLE INSTRUCTIONS:
 You are designing an API specification for a {project_description}. The API MUST exclusively use **{tech_stack_backend_name}** for all backend components and considerations. You MUST NOT deviate from this stack for any backend considerations. Your entire API design, including all data types, operation structures, and examples, MUST strictly and exclusively align with **{tech_stack_backend_name}**.
@@ -1179,7 +1233,7 @@ AGENT_PROMPTS = {
     "mobile_developer": MOBILE_DEVELOPER_PROMPT, # This is a general role, specific mobile sub-agents have their own prompts
     "tester": TESTER_PROMPT,
     "debugger": DEBUGGER_PROMPT,
-    "tech_negotiator": TECH_NEGOTIATOR_PROMPT,
+    "tech_negotiator": TECH_NEGOTIATOR_PROMPT, # Ensure this comma is present
 }
 
 # Merge specialized prompts
@@ -1395,3 +1449,5 @@ def get_evaluation_prompt(eval_type, context):
             project_type=context.get('project_type', 'fullstack'),
             architecture=context.get('architecture', '')
         )
+
+[end of prompts/general_prompts.py]

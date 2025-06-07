@@ -448,6 +448,14 @@ class Agent:
             parsed_result["errors"].append(error_message)
             self.logger.log(f"LLM call failed or returned error for {self.name}: {error_message}", self.role, level="ERROR")
             return parsed_result
+        elif len(response_text.strip()) < 25 and not \
+             (response_text.strip().startswith("{") or response_text.strip().startswith("[")):
+            # If response is very short and doesn't start like JSON
+            parsed_result["status"] = "error"
+            error_message = f"LLM response for agent '{self.name}' is unusually short and not recognizable as JSON. Raw fragment: '{response_text.strip()}'"
+            parsed_result["errors"].append(error_message)
+            self.logger.log(error_message, self.role, level="ERROR")
+            return parsed_result
         try:
             if '```json' in response_text:
                 json_start = response_text.find('```json') + 7
@@ -558,9 +566,35 @@ class ProjectAnalyzer(Agent):
             if 'parsed_json_content' in base_parsed_output:
                 analysis_data = base_parsed_output['parsed_json_content']
             else:
-                self.logger.log(f"ProjectAnalyzer: No '```json' block found by base parser. Attempting to parse entire response.", self.role, level="INFO")
-                json_str = base_parsed_output["raw_response"]
-                analysis_data = json.loads(json_str)
+                # If base parser didn't find '```json', look for "Final Answer:"
+                raw_response_text = base_parsed_output["raw_response"]
+                final_answer_marker = "Final Answer:"
+                marker_index = raw_response_text.rfind(final_answer_marker) # Use rfind for potentially multiple "Final Answer:" mentions
+
+                if marker_index != -1:
+                    # Extract text after "Final Answer:"
+                    json_substring = raw_response_text[marker_index + len(final_answer_marker):].strip()
+                    # Attempt to parse this substring as JSON
+                    try:
+                        analysis_data = json.loads(json_substring)
+                        self.logger.log(f"ProjectAnalyzer: Successfully parsed JSON from 'Final Answer:' block.", self.role)
+                    except json.JSONDecodeError as e_final_answer:
+                        # Log specific error if parsing after "Final Answer:" fails
+                        error_msg = f"Failed to decode JSON from 'Final Answer:' block: {e_final_answer}. Substring: {json_substring[:200]}"
+                        self.logger.log(error_msg, self.role, level="ERROR")
+                        base_parsed_output["status"] = "error"
+                        base_parsed_output["errors"].append(error_msg)
+                        # Ensure analysis_data is not used if parsing fails
+                        project_context.analysis = AnalysisOutput(project_type_confirmed="error_parsing_final_answer_failed", key_requirements=[error_msg])
+                        return base_parsed_output # Return early as parsing failed
+                else:
+                    # If "Final Answer:" marker is not found at all
+                    error_msg = "No '```json' block found by base parser and 'Final Answer:' marker also not found in response."
+                    self.logger.log(error_msg, self.role, level="ERROR")
+                    base_parsed_output["status"] = "error"
+                    base_parsed_output["errors"].append(error_msg)
+                    project_context.analysis = AnalysisOutput(project_type_confirmed="error_no_json_or_marker", key_requirements=[error_msg])
+                    return base_parsed_output # Return early
             suggested_tech_stack_data = analysis_data.get("suggested_tech_stack")
             if suggested_tech_stack_data is not None:
                 try:
