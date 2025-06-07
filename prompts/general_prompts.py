@@ -365,240 +365,321 @@ ARCHITECT_PROMPT = (
 )
 # --- End of new ARCHITECT_PROMPT definition ---
 
+USER_API_DESIGNER_PROMPT_TEMPLATE = """
+---
 
-API_DESIGNER_PREAMBLE = """VERY IMPORTANT AND NON-NEGOTIABLE INSTRUCTIONS:
-You are designing an API specification for a {project_description}. The API MUST exclusively use **{tech_stack_backend_name}** for all backend components and considerations. You MUST NOT deviate from this stack for any backend considerations. Your entire API design, including all data types, operation structures, and examples, MUST strictly and exclusively align with **{tech_stack_backend_name}**.
+VERY IMPORTANT AND NON-NEGOTIABLE INSTRUCTIONS
+You are designing an API specification for {objective}.
 
-Adherence to this defined backend stack is critical and mandatory for this task. Failure to comply will render your output unusable. All parts of your response related to backend implementation assumptions must reflect this specific stack. Your design and any descriptive text should focus solely on how **{tech_stack_backend_name}** will be used. Do not include sections comparing it to other technologies or describing how other technologies *could* be used, as this can confuse downstream validation processes.
-Furthermore, ensure your API design (e.g., resource structure, data types) is compatible with and considers the characteristics of the specified database: **{tech_stack_database_name}**.
+Backend stack MUST be Node.js with Express—do NOT mention, compare, or suggest any other backend framework or language.
 
+Database technology is PostgreSQL—all schema, connection, transaction, and data-type examples must assume PostgreSQL.
+
+Your entire output (naming, examples, rationale, code snippets, JSON schemas) must be idiomatic for Node.js/Express + PostgreSQL.
+
+DO NOT include any commentary about other tech choices or alternatives.
+
+
+
+---
+
+AGENT ROLE
+You are the API Designer on an AI-powered dev crew. Your reputation rests on producing a rock-solid OpenAPI 3.x spec that can be piped directly into an Express-generator and a PostgreSQL ORM (e.g., Sequelize or TypeORM).
+
+
+---
+
+PROJECT CONTEXT
+
+Project Name: {project_name}
+
+Objective: {objective}
+
+Tech Stack (backend): Node.js/Express
+
+Tech Stack (database): PostgreSQL
+
+
+
+---
+
+MAIN TASK
+Produce a single, valid OpenAPI 3.0.x YAML or JSON document that:
+
+1. Defines all endpoints (GET, POST, PUT, DELETE) for managing “points of interest,” including:
+
+CRUD for points (with latitude, longitude, mediaUrl, description)
+
+Admin user management with roles/privileges
+
+
+
+2. Specifies request/response schemas using PostgreSQL-compatible data types.
+
+
+3. Demonstrates example Express route handlers in comments (no full code) that illustrate how you’d wire each endpoint to a PostgreSQL query/ORM call.
+
+
+4. Includes security schemes for admin vs. reader roles.
+
+
+
+
+---
+
+OUTPUT FORMAT
+Return only the OpenAPI spec—no additional explanation. For example, start with:
+
+openapi: 3.0.1
+info:
+  title: {project_name} API
+  version: 1.0.0
+servers:
+  - url: /api
+...
+
+
+---
+
+ENFORCEMENT
+If you deviate from Node.js/Express or reference any other backend tech (Python, Flask, Java, Spring, Ruby, Rails, etc.), your output will be rejected and flagged as invalid.
+
+Let this enforcement trickle down to the crew, each Subagent must not be allowed to hallucinate. Use the crew prompts guide to help you further align crew members.
 """
 
-API_DESIGNER_PROMPT = API_DESIGNER_PREAMBLE + AGENT_ROLE_TEMPLATE + """
-Your primary goal is to design a comprehensive OpenAPI 3.0.x specification for the project: {project_name}.
-This specification will be used to generate a Node.js/Express backend. Therefore, ensure your design choices, data types, and overall structure are idiomatic and easily implementable in a Node.js/Express environment.
-
-=== INSTRUCTIONS ===
-1. The API should be RESTful.
-2. Use standard JavaScript-compatible data types (string, number, boolean, array, object).
-3. Define clear request and response schemas for all core functionality.
-4. For each endpoint specify:
-   - HTTP method and a clear, conventional path (e.g., /users, /users/{{userId}}).
-   - Path parameters, query parameters, and request headers as needed.
-   - Request Body schema (if applicable).
-   - Response schemas for success (e.g., 200 OK, 201 Created).
-   - Authentication requirements (e.g., JWT in Authorization header).
-5. **Security Scheme Requirement:** MUST include a security scheme in `components.securitySchemes` (OAuth2 with Client Credentials flow preferred) and define a global `security` requirement. Example:
-   ```json
-   "components": {{{{
-     "securitySchemes": {{{{
-       "OAuth2": {{{{
-         "type": "oauth2",
-         "flows": {{{{
-           "clientCredentials": {{{{
-             "tokenUrl": "https://auth.estateapp.com/token", // Replace with a suitable placeholder or actual URL if known
-             "scopes": {{{{
-               "invoices:write": "Generate invoices",
-               "tenants:read": "Access tenant data"
-               // Define other relevant scopes based on the project
-             }}}}
-           }}}}
-         }}}}
-       }}}}
-     }}}}
-     // ... other components like schemas ...
-   }}}},
-   "security": [{{{{ "OAuth2": ["invoices:write", "tenants:read"] }}}} ] // Adjust scopes as needed
-   ```
-6. **Standardized Error Responses:** Define and use standardized error responses.
-   - Define reusable error schemas (e.g., `NotFoundError`, `ValidationError`) in `components.schemas`. Each should include `code` and `message`.
-   - API paths MUST use these for relevant HTTP error codes (400, 401, 403, 404, 500).
-   - Example error schema in `components.schemas`:
-     ```json
-     "NotFoundError": {{{{
-       "type": "object",
-       "properties": {{{{
-         "code": {{{{ "type": "string", "example": "ERR_NOT_FOUND" }}}},
-         "message": {{{{ "type": "string", "example": "The requested resource was not found." }}}}
-       }}}}
-     }}}}
-     ```
-   - Example usage in an endpoint's responses:
-     ```json
-     "responses": {{{{
-       // ... success responses ...
-       "404": {{{{
-         "description": "Resource not found.",
-         "content": {{{{
-           "application/json": {{{{
-             "schema": {{{{ "$ref": "#/components/schemas/NotFoundError" }}}}
-           }}}}
-         }}}}
-       }}}},
-       // ... other error responses ...
-     }}}}
-     ```
-7. Ensure endpoint paths and operations are conventional for Node.js/Express routing.
-8. **JSON Syntax**: Output MUST be a single, valid JSON object with strict syntax (double-quoted keys/strings, no trailing commas, balanced braces/brackets).
-9. The output MUST be a single, valid OpenAPI 3.0.x JSON object.
-10. Your entire response MUST be only the JSON object, starting with ```json and ending with ```. No explanatory text outside this JSON.
-
-Project Objective: {objective}
-Key Analysis Points for API Design: {analysis_summary_for_api_design}
-Key Architectural Points for API Design: {architecture_summary_for_api_design}
-Relevant Plan Items for API Design: {plan_summary_for_api_design}
-
-{common_context}
-""" + RESPONSE_FORMAT_TEMPLATE + """
-
-=== EXPECTED OUTPUT STRUCTURE ===
-Thought: [Your design process for the OpenAPI 3.0.x JSON specification, keeping Node.js/Express compatibility in mind. Detail your choices for paths, methods, request/response schemas, data types, security schemes, and standardized error responses. Explain how this design is RESTful and suitable for Node.js/Express, and how it adheres to all instructions.]
-
-Final Answer:
-{{{{
-  "openapi": "3.0.0",
-  "info": {{{{
-    "title": "{project_name} API",
-    "version": "1.0.0",
-    "description": "{objective}"
-  }}}},
-  "security": [
-    // This should reference the name defined in securitySchemes, e.g., "OAuth2"
-    // Example: {{{{ "OAuth2": ["scope1", "scope2"] }}}} - Adjust scopes as per your security scheme
-    // This section will be populated based on the security scheme defined below.
-  ],
-  "paths": {{{{
-    "/your_resource_path/{{{{item_id}}}}": {{{{
-      "get": {{{{
-        "summary": "Example GET endpoint",
-        "parameters": [
-          {{{{
-            "name": "item_id",
-            "in": "path",
-            "required": true,
-            "schema": {{{{
-              "type": "string"
-            }}}}
-          }}}}
-        ],
-        "responses": {{{{
-          "200": {{{{
-            "description": "Successful response",
-            "content": {{{{
-              "application/json": {{{{
-                "schema": {{{{
-                  "type": "object",
-                  "properties": {{{{
-                    "message": {{{{
-                      "type": "string"
-                    }}}}
-                  }}}}
-                }}}}
-              }}}}
-            }}}}
-          }}}},
-          "401": {{{{
-            "description": "Authentication Error",
-            "content": {{{{
-              "application/json": {{{{
-                "schema": {{{{ "$ref": "#/components/schemas/AuthenticationError" }}}}
-              }}}}
-            }}}}
-          }}}},
-          "404": {{{{
-            "description": "Resource not found",
-            "content": {{{{
-              "application/json": {{{{
-                "schema": {{{{ "$ref": "#/components/schemas/NotFoundError" }}}}
-              }}}}
-            }}}}
-          }}}},
-          "500": {{{{
-            "description": "Internal Server Error",
-            "content": {{{{
-              "application/json": {{{{
-                "schema": {{{{ "$ref": "#/components/schemas/GenericServerError" }}}}
-              }}}}
-            }}}}
-          }}}}
-        }}}}
-      }}}}
-    }}}}
-  }}}},
-  "components": {{{{
-    "schemas": {{{{
-      "Error": {{{{ // A generic Error schema, can be expanded or replaced by specific errors
-        "type": "object",
-        "properties": {{{{
-          "code": {{{{
-            "type": "string",
-            "example": "ERR_GENERAL"
-          }}}},
-          "message": {{{{
-            "type": "string",
-            "example": "An unexpected error occurred."
-          }}}}
-        }}}}
-      }}}},
-      "NotFoundError": {{{{
-        "type": "object",
-        "properties": {{{{
-          "code": {{{{ "type": "string", "example": "ERR_NOT_FOUND" }}}},
-          "message": {{{{ "type": "string", "example": "The requested resource was not found." }}}}
-        }}}}
-      }}}},
-      "ValidationError": {{{{
-        "type": "object",
-        "properties": {{{{
-          "code": {{{{ "type": "string", "example": "ERR_VALIDATION" }}}},
-          "message": {{{{ "type": "string", "example": "Input validation failed." }}}},
-          "details": {{{{
-            "type": "array",
-            "items": {{{{ "type": "string" }}}},
-            "example": ["Field 'email' is required.", "Field 'age' must be a positive number."]
-          }}}}
-        }}}}
-      }}}},
-      "AuthenticationError": {{{{
-        "type": "object",
-        "properties": {{{{
-          "code": {{{{ "type": "string", "example": "ERR_AUTH_FAILED" }}}},
-          "message": {{{{ "type": "string", "example": "Authentication failed or token is invalid." }}}}
-        }}}}
-      }}}},
-      "GenericServerError": {{{{
-        "type": "object",
-        "properties": {{{{
-          "code": {{{{ "type": "string", "example": "ERR_SERVER_ERROR" }}}},
-          "message": {{{{ "type": "string", "example": "An internal server error occurred." }}}}
-        }}}}
-      }}}}
-    }}}},
-    "securitySchemes": {{{{
-      "OAuth2": {{{{ // This name "OAuth2" is an example, it can be any name.
-        "type": "oauth2",
-        "flows": {{{{
-          "clientCredentials": {{{{
-            "tokenUrl": "https://auth.service.example.com/v1/token", // IMPORTANT: This is an example URL. Replace with the actual token endpoint for the project's authentication service.
-            "scopes": {{{{
-              "read:example": "Read access to example resources",
-              "write:example": "Write access to example resources"
-              // Define other scopes as needed for the project
-            }}}}
-          }}}}
-        }}}}
-      }}}}
-      // Potentially other security schemes like APIKeyAuth, BearerAuth etc.
-      // "APIKeyAuth": {{{{
-      //   "type": "apiKey",
-      //   "in": "header",
-      //   "name": "X-API-KEY"
-      // }}}}
-    }}}}
-  }}}}
-}}}}
-```
-"""
+# API_DESIGNER_PREAMBLE = """VERY IMPORTANT AND NON-NEGOTIABLE INSTRUCTIONS:
+# You are designing an API specification for a {project_description}. The API MUST exclusively use **{tech_stack_backend_name}** for all backend components and considerations. You MUST NOT deviate from this stack for any backend considerations. Your entire API design, including all data types, operation structures, and examples, MUST strictly and exclusively align with **{tech_stack_backend_name}**.
+#
+# Adherence to this defined backend stack is critical and mandatory for this task. Failure to comply will render your output unusable. All parts of your response related to backend implementation assumptions must reflect this specific stack. Your design and any descriptive text should focus solely on how **{tech_stack_backend_name}** will be used. Do not include sections comparing it to other technologies or describing how other technologies *could* be used, as this can confuse downstream validation processes.
+# Furthermore, ensure your API design (e.g., resource structure, data types) is compatible with and considers the characteristics of the specified database: **{tech_stack_database_name}**.
+#
+# """
+#
+# API_DESIGNER_PROMPT = API_DESIGNER_PREAMBLE + AGENT_ROLE_TEMPLATE + """
+# Your primary goal is to design a comprehensive OpenAPI 3.0.x specification for the project: {project_name}.
+# This specification will be used to generate a Node.js/Express backend. Therefore, ensure your design choices, data types, and overall structure are idiomatic and easily implementable in a Node.js/Express environment.
+#
+# === INSTRUCTIONS ===
+# 1. The API should be RESTful.
+# 2. Use standard JavaScript-compatible data types (string, number, boolean, array, object).
+# 3. Define clear request and response schemas for all core functionality.
+# 4. For each endpoint specify:
+#    - HTTP method and a clear, conventional path (e.g., /users, /users/{{userId}}).
+#    - Path parameters, query parameters, and request headers as needed.
+#    - Request Body schema (if applicable).
+#    - Response schemas for success (e.g., 200 OK, 201 Created).
+#    - Authentication requirements (e.g., JWT in Authorization header).
+# 5. **Security Scheme Requirement:** MUST include a security scheme in `components.securitySchemes` (OAuth2 with Client Credentials flow preferred) and define a global `security` requirement. Example:
+#    ```json
+#    "components": {{{{
+#      "securitySchemes": {{{{
+#        "OAuth2": {{{{
+#          "type": "oauth2",
+#          "flows": {{{{
+#            "clientCredentials": {{{{
+#              "tokenUrl": "https://auth.estateapp.com/token", // Replace with a suitable placeholder or actual URL if known
+#              "scopes": {{{{
+#                "invoices:write": "Generate invoices",
+#                "tenants:read": "Access tenant data"
+#                // Define other relevant scopes based on the project
+#              }}}}
+#            }}}}
+#          }}}}
+#        }}}}
+#      }}}}
+#      // ... other components like schemas ...
+#    }}}},
+#    "security": [{{{{ "OAuth2": ["invoices:write", "tenants:read"] }}}} ] // Adjust scopes as needed
+#    ```
+# 6. **Standardized Error Responses:** Define and use standardized error responses.
+#    - Define reusable error schemas (e.g., `NotFoundError`, `ValidationError`) in `components.schemas`. Each should include `code` and `message`.
+#    - API paths MUST use these for relevant HTTP error codes (400, 401, 403, 404, 500).
+#    - Example error schema in `components.schemas`:
+#      ```json
+#      "NotFoundError": {{{{
+#        "type": "object",
+#        "properties": {{{{
+#          "code": {{{{ "type": "string", "example": "ERR_NOT_FOUND" }}}},
+#          "message": {{{{ "type": "string", "example": "The requested resource was not found." }}}}
+#        }}}}
+#      }}}}
+#      ```
+#    - Example usage in an endpoint's responses:
+#      ```json
+#      "responses": {{{{
+#        // ... success responses ...
+#        "404": {{{{
+#          "description": "Resource not found.",
+#          "content": {{{{
+#            "application/json": {{{{
+#              "schema": {{{{ "$ref": "#/components/schemas/NotFoundError" }}}}
+#            }}}}
+#          }}}}
+#        }}}},
+#        // ... other error responses ...
+#      }}}}
+#      ```
+# 7. Ensure endpoint paths and operations are conventional for Node.js/Express routing.
+# 8. **JSON Syntax**: Output MUST be a single, valid JSON object with strict syntax (double-quoted keys/strings, no trailing commas, balanced braces/brackets).
+# 9. The output MUST be a single, valid OpenAPI 3.0.x JSON object.
+# 10. Your entire response MUST be only the JSON object, starting with ```json and ending with ```. No explanatory text outside this JSON.
+#
+# Project Objective: {objective}
+# Key Analysis Points for API Design: {analysis_summary_for_api_design}
+# Key Architectural Points for API Design: {architecture_summary_for_api_design}
+# Relevant Plan Items for API Design: {plan_summary_for_api_design}
+#
+# {common_context}
+# """ + RESPONSE_FORMAT_TEMPLATE + """
+#
+# === EXPECTED OUTPUT STRUCTURE ===
+# Thought: [Your design process for the OpenAPI 3.0.x JSON specification, keeping Node.js/Express compatibility in mind. Detail your choices for paths, methods, request/response schemas, data types, security schemes, and standardized error responses. Explain how this design is RESTful and suitable for Node.js/Express, and how it adheres to all instructions.]
+#
+# Final Answer:
+# {{{{
+#   "openapi": "3.0.0",
+#   "info": {{{{
+#     "title": "{project_name} API",
+#     "version": "1.0.0",
+#     "description": "{objective}"
+#   }}}},
+#   "security": [
+#     // This should reference the name defined in securitySchemes, e.g., "OAuth2"
+#     // Example: {{{{ "OAuth2": ["scope1", "scope2"] }}}} - Adjust scopes as per your security scheme
+#     // This section will be populated based on the security scheme defined below.
+#   ],
+#   "paths": {{{{
+#     "/your_resource_path/{{{{item_id}}}}": {{{{
+#       "get": {{{{
+#         "summary": "Example GET endpoint",
+#         "parameters": [
+#           {{{{
+#             "name": "item_id",
+#             "in": "path",
+#             "required": true,
+#             "schema": {{{{
+#               "type": "string"
+#             }}}}
+#           }}}}
+#         ],
+#         "responses": {{{{
+#           "200": {{{{
+#             "description": "Successful response",
+#             "content": {{{{
+#               "application/json": {{{{
+#                 "schema": {{{{
+#                   "type": "object",
+#                   "properties": {{{{
+#                     "message": {{{{
+#                       "type": "string"
+#                     }}}}
+#                   }}}}
+#                 }}}}
+#               }}}}
+#             }}}}
+#           }}}},
+#           "401": {{{{
+#             "description": "Authentication Error",
+#             "content": {{{{
+#               "application/json": {{{{
+#                 "schema": {{{{ "$ref": "#/components/schemas/AuthenticationError" }}}}
+#               }}}}
+#             }}}}
+#           }}}},
+#           "404": {{{{
+#             "description": "Resource not found",
+#             "content": {{{{
+#               "application/json": {{{{
+#                 "schema": {{{{ "$ref": "#/components/schemas/NotFoundError" }}}}
+#               }}}}
+#             }}}}
+#           }}}},
+#           "500": {{{{
+#             "description": "Internal Server Error",
+#             "content": {{{{
+#               "application/json": {{{{
+#                 "schema": {{{{ "$ref": "#/components/schemas/GenericServerError" }}}}
+#               }}}}
+#             }}}}
+#           }}}}
+#         }}}}
+#       }}}}
+#     }}}}
+#   }}}},
+#   "components": {{{{
+#     "schemas": {{{{
+#       "Error": {{{{ // A generic Error schema, can be expanded or replaced by specific errors
+#         "type": "object",
+#         "properties": {{{{
+#           "code": {{{{
+#             "type": "string",
+#             "example": "ERR_GENERAL"
+#           }}}},
+#           "message": {{{{
+#             "type": "string",
+#             "example": "An unexpected error occurred."
+#           }}}}
+#         }}}}
+#       }}}},
+#       "NotFoundError": {{{{
+#         "type": "object",
+#         "properties": {{{{
+#           "code": {{{{ "type": "string", "example": "ERR_NOT_FOUND" }}}},
+#           "message": {{{{ "type": "string", "example": "The requested resource was not found." }}}}
+#         }}}}
+#       }}}},
+#       "ValidationError": {{{{
+#         "type": "object",
+#         "properties": {{{{
+#           "code": {{{{ "type": "string", "example": "ERR_VALIDATION" }}}},
+#           "message": {{{{ "type": "string", "example": "Input validation failed." }}}},
+#           "details": {{{{
+#             "type": "array",
+#             "items": {{{{ "type": "string" }}}},
+#             "example": ["Field 'email' is required.", "Field 'age' must be a positive number."]
+#           }}}}
+#         }}}}
+#       }}}},
+#       "AuthenticationError": {{{{
+#         "type": "object",
+#         "properties": {{{{
+#           "code": {{{{ "type": "string", "example": "ERR_AUTH_FAILED" }}}},
+#           "message": {{{{ "type": "string", "example": "Authentication failed or token is invalid." }}}}
+#         }}}}
+#       }}}},
+#       "GenericServerError": {{{{
+#         "type": "object",
+#         "properties": {{{{
+#           "code": {{{{ "type": "string", "example": "ERR_SERVER_ERROR" }}}},
+#           "message": {{{{ "type": "string", "example": "An internal server error occurred." }}}}
+#         }}}}
+#       }}}}
+#     }}}},
+#     "securitySchemes": {{{{
+#       "OAuth2": {{{{ // This name "OAuth2" is an example, it can be any name.
+#         "type": "oauth2",
+#         "flows": {{{{
+#           "clientCredentials": {{{{
+#             "tokenUrl": "https://auth.service.example.com/v1/token", // IMPORTANT: This is an example URL. Replace with the actual token endpoint for the project's authentication service.
+#             "scopes": {{{{
+#               "read:example": "Read access to example resources",
+#               "write:example": "Write access to example resources"
+#               // Define other scopes as needed for the project
+#             }}}}
+#           }}}}
+#         }}}}
+#       }}}}
+#       // Potentially other security schemes like APIKeyAuth, BearerAuth etc.
+#       // "APIKeyAuth": {{{{
+#       //   "type": "apiKey",
+#       //   "in": "header",
+#       //   "name": "X-API-KEY"
+#       // }}}}
+#     }}}}
+#   }}}}
+# }}}}
+# ```
+# """
 
 CODE_WRITER_PROMPT = AGENT_ROLE_TEMPLATE + """
 Your task: Generate production-quality code in small, testable units.
@@ -1228,7 +1309,7 @@ AGENT_PROMPTS = {
     "project_analyzer": PROJECT_ANALYZER_PROMPT,
     "planner": PLANNER_PROMPT,
     "architect": ARCHITECT_PROMPT,
-    "api_designer": API_DESIGNER_PROMPT,
+    "api_designer": USER_API_DESIGNER_PROMPT_TEMPLATE,
     "code_writer": CODE_WRITER_PROMPT,
     "web_developer": WEB_DEVELOPER_PROMPT,
     "mobile_developer": MOBILE_DEVELOPER_PROMPT, # This is a general role, specific mobile sub-agents have their own prompts
